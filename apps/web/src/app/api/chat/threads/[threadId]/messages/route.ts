@@ -4,6 +4,11 @@ import {
   appendUserMessage,
   ensureAssistantReply,
 } from "@/lib/application/chat-service";
+import { processWorkflowAfterUserMessage } from "@/lib/application/conversation-workflow";
+import {
+  listArtifactsForThread,
+  reviseArtifact,
+} from "@/lib/application/artifact-service";
 
 type Params = { params: Promise<{ threadId: string }> };
 
@@ -30,10 +35,33 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json(appended, { status: 400 });
   }
 
+  if (/修正|直して|追記|Version/.test(parsed.data.content)) {
+    const arts = listArtifactsForThread(threadId);
+    const latest = arts[arts.length - 1];
+    if (latest) {
+      reviseArtifact({
+        artifactId: latest.id,
+        instruction: parsed.data.content,
+      });
+    }
+  }
+
+  const workflow = processWorkflowAfterUserMessage({
+    threadId,
+    messageId: appended.message.id,
+    content: parsed.data.content,
+  });
+
   const replied = ensureAssistantReply({ threadId });
   if (!replied.ok) {
     return NextResponse.json(
-      { ok: true, messages: appended.messages, replyError: replied.message },
+      {
+        ok: true,
+        messages: appended.messages,
+        replyError: replied.message,
+        researchRunId: workflow.researchRunId,
+        artifactId: workflow.artifactId,
+      },
       { status: 200 },
     );
   }
@@ -44,5 +72,7 @@ export async function POST(request: Request, { params }: Params) {
     userMessage: appended.message,
     assistantMessage: replied.message,
     created: replied.created,
+    researchRunId: workflow.researchRunId,
+    artifactId: workflow.artifactId,
   });
 }

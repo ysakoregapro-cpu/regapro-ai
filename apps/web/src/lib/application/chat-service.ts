@@ -17,6 +17,13 @@ import {
   getPublicProfile,
   resolveSessionAccess,
 } from "@/lib/data/dev-sample/memberships";
+import {
+  buildResearchAnswer,
+  completeResearchDemo,
+  getResearchRun,
+  listResearchRunsForThread,
+} from "@/lib/application/research-service";
+import { listArtifactsForThread } from "@/lib/application/artifact-service";
 
 function newId(): string {
   return globalThis.crypto.randomUUID();
@@ -49,6 +56,17 @@ export type StoredThread = {
   containsSensitiveContent: boolean;
   updatedAt: string;
   createdAt: string;
+  /** Conversation workflow started from home / TopBar / tools */
+  workflowType?:
+    | "general"
+    | "research"
+    | "document"
+    | "file_review"
+    | "code"
+    | "prompt"
+    | "task";
+  documentSubtype?: "text" | "document" | "presentation";
+  toolId?: string | null;
 };
 
 export type InheritedResource = {
@@ -614,10 +632,60 @@ export function listDerivedResources(threadId: string) {
  * Template / rule-based reply for offline providers.
  * States only what was actually done — never claims Web/knowledge search ran.
  */
-export function craftDemoAssistantReply(userText: string): {
+export function craftDemoAssistantReply(
+  userText: string,
+  ctx?: {
+    threadId?: string;
+    workflowType?: StoredThread["workflowType"];
+  },
+): {
   content: string;
   citations: { id: string; title: string; source: string }[];
 } {
+  if (
+    ctx?.threadId &&
+    (ctx.workflowType === "research" || /調べて|調査/.test(userText))
+  ) {
+    const runs = listResearchRunsForThread(ctx.threadId);
+    const run = runs[runs.length - 1];
+    if (run) {
+      if (run.status !== "completed") completeResearchDemo(run.id);
+      const fresh = getResearchRun(run.id) ?? run;
+      return {
+        content: buildResearchAnswer(fresh),
+        citations: fresh.citations.map((c) => ({
+          id: c.id,
+          title: c.title,
+          source: c.publisher,
+        })),
+      };
+    }
+  }
+
+  if (
+    ctx?.workflowType === "document" ||
+    /議事録|文面|資料にして/.test(userText)
+  ) {
+    const arts = ctx?.threadId ? listArtifactsForThread(ctx.threadId) : [];
+    const art = arts[arts.length - 1];
+    if (art) {
+      const statusLine =
+        art.formatStatus === "ready"
+          ? `Markdown下書きを成果物として保存しました（v${art.version}）。`
+          : `${art.disabledReason ?? "この形式は未接続です"}。代わりにMarkdown下書きを右ペインに表示しています。`;
+      return {
+        content: [
+          `「${art.title}」の資料作成を進めました。`,
+          "",
+          statusLine,
+          "",
+          "同じチャットから修正指示を送るとVersionが増えます。",
+        ].join("\n"),
+        citations: [],
+      };
+    }
+  }
+
   const subject = findColleagueMention(userText);
   if (subject && /相談|最近.*何を|どう考え|実給与|実際の給与/.test(userText)) {
     return {
@@ -706,7 +774,10 @@ export function ensureAssistantReply(input: {
     }
   }
 
-  const crafted = craftDemoAssistantReply(lastUser.content);
+  const crafted = craftDemoAssistantReply(lastUser.content, {
+    threadId: input.threadId,
+    workflowType: thread.workflowType,
+  });
   const assistantMsg: StoredMessage = {
     id: newId(),
     threadId: input.threadId,

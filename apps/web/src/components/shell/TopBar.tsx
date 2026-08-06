@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Bell, ChevronDown, FolderKanban, Menu, Plus, Search, User } from "lucide-react";
 import { CURRENT_MEMBERSHIP } from "@/lib/data/dev-sample/memberships";
 import { SAMPLE_NOTIFICATIONS, SAMPLE_PROJECTS } from "@/lib/data/dev-sample/catalog";
@@ -84,12 +85,67 @@ function ProjectSwitcher() {
 
 function GlobalCreateMenu() {
   const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
+
+  async function startResearch() {
+    setPending(true);
+    setOpen(false);
+    try {
+      const key = crypto.randomUUID();
+      const res = await fetch("/api/chat/workflow", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": key,
+        },
+        body: JSON.stringify({ workflowType: "research", idempotencyKey: key }),
+      });
+      const data = (await res.json()) as { ok: boolean; redirectTo?: string };
+      if (data.ok && data.redirectTo) router.push(data.redirectTo);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function onFile(file: File | undefined) {
+    if (!file) return;
+    setOpen(false);
+    const res = await fetch("/api/files", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        createThread: true,
+        name: file.name,
+        mimeType: file.type || "application/octet-stream",
+        sizeBytes: file.size,
+      }),
+    });
+    const data = (await res.json()) as {
+      ok: boolean;
+      redirectTo?: string | null;
+      threadId?: string;
+    };
+    if (data.ok && data.redirectTo) router.push(data.redirectTo);
+    else if (data.ok && data.threadId) {
+      router.push(`/assistant?thread=${data.threadId}&tool=attach_file&focus=1`);
+    }
+  }
+
   return (
     <div className="relative">
+      <input
+        ref={fileRef}
+        type="file"
+        className="sr-only"
+        onChange={(e) => void onFile(e.target.files?.[0])}
+      />
       <button
         type="button"
         className="inline-flex h-9 items-center gap-1 rounded-md bg-accent px-2.5 text-[12px] font-medium text-accent-fg hover:bg-accent-hover"
         aria-expanded={open}
+        disabled={pending}
         onClick={() => setOpen((v) => !v)}
       >
         <Plus className="h-3.5 w-3.5" />
@@ -98,24 +154,32 @@ function GlobalCreateMenu() {
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 z-[40] mt-1 w-48 rounded-[12px] border border-border bg-surface py-1 shadow-[var(--shadow-menu)]"
+          className="absolute right-0 z-[40] mt-1 w-52 rounded-[12px] border border-border bg-surface py-1 shadow-[var(--shadow-menu)]"
         >
-          {[
-            { href: "/assistant", label: "新しいチャット" },
-            { href: "/tasks?new=1", label: "タスクを追加" },
-            { href: "/workspace/documents?new=1", label: "ドキュメントを作る" },
-            { href: "/workspace/research?new=1", label: "調査を開始" },
-          ].map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="block px-3 py-2 text-[13px] hover:bg-surface-raised"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-            >
-              {item.label}
-            </Link>
-          ))}
+          <Link
+            href="/assistant"
+            className="block px-3 py-2 text-[13px] hover:bg-surface-raised"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+          >
+            新しいチャット
+          </Link>
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full px-3 py-2 text-left text-[13px] hover:bg-surface-raised"
+            onClick={() => void startResearch()}
+          >
+            詳細調査を開始
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full px-3 py-2 text-left text-[13px] hover:bg-surface-raised"
+            onClick={() => fileRef.current?.click()}
+          >
+            ファイルを追加
+          </button>
         </div>
       ) : null}
     </div>
@@ -215,10 +279,9 @@ export function CommandPalette({
   const ref = useRef<HTMLInputElement>(null);
   const commands = [
     { href: "/assistant", label: "新しいチャット" },
-    { href: "/tasks?new=1", label: "タスクを追加" },
     { href: "/tasks?filter=today", label: "今日のタスク" },
-    { href: "/workspace/research?new=1", label: "Webで調べる" },
-    { href: "/workspace/documents?new=1", label: "ドキュメントを作る" },
+    { href: "/workspace/research", label: "調査ライブラリ" },
+    { href: "/workspace/documents", label: "ドキュメント" },
     { href: "/workspace/projects", label: "プロジェクトを開く" },
     { href: "/settings", label: "設定を開く" },
     { href: "/search", label: "横断検索" },

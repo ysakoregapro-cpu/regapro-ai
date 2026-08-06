@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PageHeader, SectionHeader, ListRow, StatusBadge } from "@/components/ui/primitives";
 import { HomeAskComposer } from "@/components/chat/HomeAskComposer";
+import { HomeToolGrid } from "@/components/chat/WorkflowActions";
 import { getHomeDashboard, projectName, userName } from "@/lib/application/catalog-service";
 import { resolveSessionAccess } from "@/lib/data/dev-sample/memberships";
 
@@ -31,6 +32,11 @@ export default function HomePage() {
         defaultLevel="company"
         locked={locked}
       />
+
+      <section>
+        <SectionHeader title="よく使う作業" />
+        <HomeToolGrid />
+      </section>
 
       <section>
         <SectionHeader title="今日のタスク" />
@@ -130,7 +136,9 @@ export default function HomePage() {
         {data.recentActivity.map((a) => (
           <ListRow key={a.id}>
             <p className="flex-1 text-[13px]">{a.label}</p>
-            <span className="text-[12px] text-text-muted">{a.at.slice(5, 16).replace("T", " ")}</span>
+            <span className="text-[12px] text-text-muted">
+              {a.at.slice(5, 16).replace("T", " ")}
+            </span>
           </ListRow>
         ))}
       </section>

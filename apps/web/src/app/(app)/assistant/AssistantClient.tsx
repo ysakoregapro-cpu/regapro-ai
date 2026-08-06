@@ -73,6 +73,8 @@ export default function AssistantPage() {
   const initialThread = params.get("thread");
   const initialQuery = params.get("q") ?? "";
   const started = params.get("started") === "1";
+  const initialTool = params.get("tool");
+  const wantFocus = params.get("focus") === "1";
 
   const [threads, setThreads] = useState<ThreadListItem[]>([]);
   const [threadId, setThreadId] = useState<string | null>(initialThread);
@@ -82,18 +84,38 @@ export default function AssistantPage() {
   const [threadProjectId, setThreadProjectId] = useState<string | null>(null);
   const [loadingThread, setLoadingThread] = useState(Boolean(initialThread));
   const [input, setInput] = useState(started ? "" : initialQuery);
-  const [activeTools, setActiveTools] = useState<string[]>([]);
+  const [activeTools, setActiveTools] = useState<string[]>(
+    initialTool ? [initialTool] : [],
+  );
   const [generating, setGenerating] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [rightTab, setRightTab] = useState<RightTab>("citations");
+  const [rightTab, setRightTab] = useState<RightTab>(
+    initialTool === "web_research" ? "citations" : "citations",
+  );
   const [feedback, setFeedback] = useState<Record<string, "up" | "down">>({});
   const [correctionOpen, setCorrectionOpen] = useState<Record<string, boolean>>({});
   const [corrections, setCorrections] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<string | null>(null);
   const [levelAdvice, setLevelAdvice] = useState<string | null>(null);
+  const [researchCitations, setResearchCitations] = useState<
+    {
+      id: string;
+      title: string;
+      publisher: string;
+      url: string | null;
+      excerpt: string;
+      confidence: number;
+      confidentialityLevel: ConfidentialityLevel;
+    }[]
+  >([]);
+  const [researchProgress, setResearchProgress] = useState<string | null>(null);
+  const [demoNotice, setDemoNotice] = useState<string | null>(null);
+  const [threadArtifacts, setThreadArtifacts] = useState<ArtifactItem[]>([]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const syncThreadParam = useCallback(
     (id: string | null, clearStarted = true) => {
@@ -188,19 +210,127 @@ export default function AssistantPage() {
     return () => window.clearTimeout(t);
   }, [toast]);
 
+  useEffect(() => {
+    if (wantFocus || initialTool === "web_research") {
+      const t = window.setTimeout(() => inputRef.current?.focus(), 80);
+      return () => window.clearTimeout(t);
+    }
+  }, [wantFocus, initialTool, threadId]);
+
+  const refreshResearchPane = useCallback(async (id: string) => {
+    const res = await fetch(`/api/research?threadId=${id}`, { cache: "no-store" });
+    const data = (await res.json()) as {
+      ok: boolean;
+      runs?: {
+        status: string;
+        citations: {
+          id: string;
+          title: string;
+          publisher: string;
+          url: string | null;
+          excerpt: string;
+          confidence: number;
+          confidentialityLevel: ConfidentialityLevel;
+        }[];
+        isDemo: boolean;
+        demoNoticeShown: boolean;
+      }[];
+    };
+    const run = data.runs?.[data.runs.length - 1];
+    if (!run) {
+      setResearchCitations([]);
+      setResearchProgress(null);
+      return;
+    }
+    setResearchCitations(run.citations ?? []);
+    if (run.status !== "completed" && run.status !== "failed") {
+      setResearchProgress("調査を準備しています");
+    } else {
+      setResearchProgress(null);
+    }
+    if (run.isDemo && run.demoNoticeShown) {
+      setDemoNotice(
+        "現在は確認用データで調査フローを表示しています。実際のWeb検索はまだ接続されていません。",
+      );
+    }
+  }, []);
+
+  const refreshArtifactsPane = useCallback(async (id: string) => {
+    const res = await fetch(`/api/artifacts?threadId=${id}`, { cache: "no-store" });
+    const data = (await res.json()) as {
+      artifacts?: {
+        id: string;
+        title: string;
+        format: string;
+        updatedAt: string;
+        projectId: string | null;
+        formatStatus: string;
+        disabledReason: string | null;
+        version: number;
+      }[];
+    };
+    setThreadArtifacts(
+      (data.artifacts ?? []).map((a) => ({
+        id: a.id,
+        title: a.formatStatus === "disabled"
+          ? `${a.title}（${a.disabledReason ?? "未接続"}）`
+          : `${a.title}（v${a.version}）`,
+        kind: a.format,
+        projectId: a.projectId ?? "",
+        updatedAt: a.updatedAt,
+      })),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!threadId) return;
+    const handle = window.setTimeout(() => {
+      void refreshResearchPane(threadId);
+      void refreshArtifactsPane(threadId);
+    }, 0);
+    return () => window.clearTimeout(handle);
+  }, [threadId, messages, refreshResearchPane, refreshArtifactsPane]);
+
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-  const citations = lastAssistant?.citations ?? [];
+  const citations =
+    researchCitations.length > 0
+      ? researchCitations.map((c) => ({
+          id: c.id,
+          title: c.title,
+          source: c.publisher + (c.url ? ` · ${c.url}` : ""),
+        }))
+      : (lastAssistant?.citations ?? []);
   const relatedTasks = useMemo(() => {
     if (!threadProjectId) return [];
     return listTasks("all").filter((t) => t.projectId === threadProjectId).slice(0, 5);
   }, [threadProjectId]);
-  const relatedArtifacts = useMemo(() => {
-    if (!threadProjectId) return [];
-    return SAMPLE_DOCUMENTS.filter((d) => d.projectId === threadProjectId);
-  }, [threadProjectId]);
+  const relatedArtifacts =
+    threadArtifacts.length > 0
+      ? threadArtifacts
+      : threadProjectId
+        ? SAMPLE_DOCUMENTS.filter((d) => d.projectId === threadProjectId)
+        : [];
 
   const toggleTool = (id: string) => {
     setActiveTools((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    if (id === "web_research" && !threadId) {
+      void (async () => {
+        const key = crypto.randomUUID();
+        const res = await fetch("/api/chat/workflow", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": key,
+          },
+          body: JSON.stringify({ workflowType: "research", idempotencyKey: key }),
+        });
+        const data = (await res.json()) as { ok: boolean; redirectTo?: string };
+        if (data.ok && data.redirectTo) router.push(data.redirectTo);
+      })();
+    }
+    if (id === "attach_file") {
+      fileInputRef.current?.click();
+    }
   };
 
   const stopGenerating = () => {
@@ -214,16 +344,34 @@ export default function AssistantPage() {
 
     if (!threadId) {
       const key = crypto.randomUUID();
-      const res = await fetch("/api/chat/start", {
+      const workflowType =
+        activeTools.includes("web_research")
+          ? "research"
+          : activeTools.includes("draft_text") || activeTools.includes("make_doc")
+            ? "document"
+            : activeTools.includes("make_code")
+              ? "code"
+              : activeTools.includes("make_prompt")
+                ? "prompt"
+                : activeTools.includes("task_manage")
+                  ? "task"
+                  : "general";
+      const res = await fetch("/api/chat/workflow", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Idempotency-Key": key,
         },
         body: JSON.stringify({
-          content: text,
-          requestedLevel: threadLevel,
+          workflowType,
+          initialMessage: text,
+          confidentialityLevel: threadLevel,
           idempotencyKey: key,
+          documentSubtype: activeTools.includes("draft_text")
+            ? "text"
+            : activeTools.includes("make_doc")
+              ? "presentation"
+              : undefined,
         }),
       });
       const data = (await res.json()) as {
@@ -231,6 +379,7 @@ export default function AssistantPage() {
         threadId?: string;
         message?: string;
         restoreContent?: string;
+        redirectTo?: string;
       };
       if (!data.ok || !data.threadId) {
         if (data.restoreContent != null) setInput(data.restoreContent);
@@ -396,8 +545,16 @@ export default function AssistantPage() {
             <p className="py-8 text-[13px] text-text-secondary">会話を読み込んでいます…</p>
           ) : messages.length === 0 ? (
             <EmptyState
-              title="依頼内容を入力してください"
-              description="社内情報の整理、文面作成、タスク化などをこの画面から進められます"
+              title={
+                activeTools.includes("web_research")
+                  ? "調べたい内容を入力してください"
+                  : "依頼内容を入力してください"
+              }
+              description={
+                activeTools.includes("web_research")
+                  ? "送信後に調査フローを開始します"
+                  : "社内情報の整理、文面作成、タスク化などをこの画面から進められます"
+              }
             />
           ) : (
             <div className="mx-auto max-w-3xl space-y-4">
@@ -455,10 +612,13 @@ export default function AssistantPage() {
                   onOpenArtifact={() => setRightTab("artifacts")}
                 />
               ))}
-              {generating ? (
+              {generating || researchProgress ? (
                 <p className="text-[12px] text-text-secondary" aria-live="polite">
-                  回答を作成しています…
+                  {researchProgress ?? "回答を作成しています…"}
                 </p>
+              ) : null}
+              {demoNotice && activeTools.includes("web_research") ? (
+                <p className="text-[11px] text-text-muted">{demoNotice}</p>
               ) : null}
             </div>
           )}
@@ -472,6 +632,48 @@ export default function AssistantPage() {
           generating={generating}
           onSend={() => void sendMessage()}
           onStop={stopGenerating}
+          inputRef={inputRef}
+          fileInputRef={fileInputRef}
+          onPickFile={() => fileInputRef.current?.click()}
+          onFileSelected={(file) => {
+            if (!file) return;
+            void (async () => {
+              const res = await fetch("/api/files", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  threadId: threadId ?? undefined,
+                  createThread: !threadId,
+                  name: file.name,
+                  mimeType: file.type || "application/octet-stream",
+                  sizeBytes: file.size,
+                }),
+              });
+              const data = (await res.json()) as {
+                ok: boolean;
+                redirectTo?: string | null;
+                threadId?: string;
+                file?: { ephemeralNotice?: string | null };
+                message?: string;
+              };
+              if (!data.ok) {
+                setToast(data.message ?? "ファイルを追加できませんでした");
+                return;
+              }
+              if (data.redirectTo) {
+                router.push(data.redirectTo);
+                return;
+              }
+              if (data.threadId && data.threadId !== threadId) {
+                setThreadId(data.threadId);
+                syncThreadParam(data.threadId, true);
+              }
+              setToast(
+                data.file?.ephemeralNotice ??
+                  "ファイルを追加しました（本文の自動解析は行っていません）",
+              );
+            })();
+          }}
         />
       </section>
 
@@ -503,8 +705,10 @@ export default function AssistantPage() {
         <RightPane
           tab={rightTab}
           citations={citations}
+          researchCitations={researchCitations}
           tasks={relatedTasks}
           artifacts={relatedArtifacts}
+          demoNotice={demoNotice}
         />
       </aside>
 
@@ -721,6 +925,10 @@ function Composer({
   generating,
   onSend,
   onStop,
+  inputRef,
+  fileInputRef,
+  onPickFile,
+  onFileSelected,
 }: {
   input: string;
   onInputChange: (v: string) => void;
@@ -729,6 +937,10 @@ function Composer({
   generating: boolean;
   onSend: () => void;
   onStop: () => void;
+  inputRef: React.RefObject<HTMLTextAreaElement | null>;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  onPickFile: () => void;
+  onFileSelected: (file: File | undefined) => void;
 }) {
   return (
     <div
@@ -736,6 +948,12 @@ function Composer({
       style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}
     >
       <div className="mx-auto max-w-3xl">
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="sr-only"
+          onChange={(e) => onFileSelected(e.target.files?.[0])}
+        />
         <div className="mb-2 flex flex-wrap gap-1">
           {ASSISTANT_TOOLS.map((tool) => (
             <button
@@ -759,6 +977,7 @@ function Composer({
             type="button"
             className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-text-secondary hover:bg-surface-raised"
             aria-label="ファイルを添付"
+            onClick={onPickFile}
           >
             <Paperclip className="h-4 w-4" />
           </button>
@@ -767,6 +986,7 @@ function Composer({
             依頼内容
           </label>
           <textarea
+            ref={inputRef}
             id="assistant-input"
             rows={1}
             value={input}
@@ -777,7 +997,11 @@ function Composer({
                 onSend();
               }
             }}
-            placeholder="依頼内容を入力…（Shift+Enter で改行）"
+            placeholder={
+              activeTools.includes("web_research")
+                ? "調べたい内容を入力してください"
+                : "依頼内容を入力…（Shift+Enter で改行）"
+            }
             className="max-h-32 min-h-[36px] flex-1 resize-none bg-transparent px-1 py-2 text-[13px] outline-none"
           />
 
@@ -818,18 +1042,51 @@ function Composer({
 function RightPane({
   tab,
   citations,
+  researchCitations,
   tasks,
   artifacts,
+  demoNotice,
 }: {
   tab: RightTab;
   citations: readonly { id: string; title: string; source: string }[];
+  researchCitations?: {
+    id: string;
+    title: string;
+    publisher: string;
+    url: string | null;
+    excerpt: string;
+    confidence: number;
+    confidentialityLevel: ConfidentialityLevel;
+  }[];
   tasks: ReturnType<typeof listTasks>;
   artifacts: ArtifactItem[];
+  demoNotice?: string | null;
 }) {
+  const research = researchCitations ?? [];
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
       {tab === "citations" ? (
-        citations.length === 0 ? (
+        research.length > 0 ? (
+          <div className="space-y-3 px-1">
+            {demoNotice ? (
+              <p className="text-[11px] text-text-muted">{demoNotice}</p>
+            ) : null}
+            {research.map((c) => (
+              <div key={c.id} className="border-b border-border pb-3 last:border-0">
+                <p className="text-[13px] font-medium">{c.title}</p>
+                <p className="mt-0.5 text-[11px] text-text-secondary">
+                  {c.publisher}
+                  {c.url ? ` · ${c.url}` : " · URLなし（確認用）"}
+                </p>
+                <p className="mt-1 text-[12px] text-text-secondary">{c.excerpt}</p>
+                <p className="mt-1 text-[11px] text-text-muted">
+                  信頼度 {(c.confidence * 100).toFixed(0)}% ·{" "}
+                  {CONFIDENTIALITY_LABELS[c.confidentialityLevel]}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : citations.length === 0 ? (
           <p className="px-1 py-4 text-[12px] text-text-secondary">引用はまだありません</p>
         ) : (
           citations.map((c) => (
