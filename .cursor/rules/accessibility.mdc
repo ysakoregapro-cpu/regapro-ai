@@ -1,0 +1,52 @@
+---
+description: Regapro AI のアクセシビリティ要件 — WCAG 2.1 AA 準拠の実装基準
+alwaysApply: true
+globs:
+  - "apps/web/**/*.{tsx,ts}"
+---
+
+# Accessibility / アクセシビリティ
+
+## Standard / 基準
+
+Target **WCAG 2.1 Level AA** for all user-facing surfaces. Accessibility is a completion gate alongside lint, typecheck, test, and build.
+
+## Requirements / 要件
+
+### Perceivable / 知覚可能
+
+- Text color `#1F2937` on `#FFFFFF` / `#F7F7F5` must meet **4.5:1** contrast minimum.
+- Accent `#0F766E` on white meets AA for normal text; verify for small sizes.
+- All meaningful images and icons have `alt` text or `aria-hidden` when decorative.
+- Don't rely on color alone for status — pair with icons or labels (完了、進行中、保留).
+
+### Operable / 操作可能
+
+- Full keyboard navigation for all interactive elements.
+- Visible focus rings (use accent or system focus, never `outline: none` without replacement).
+- No keyboard traps; modals restore focus on close.
+- **No double scroll** traps — scroll containers must be reachable and predictable.
+
+### Understandable / 理解可能
+
+- Page titles and landmarks (`main`, `nav`, `aside`) reflect **work units**, not internal feature names.
+- Form errors are specific and actionable in Japanese (primary) with English where needed.
+- Consistent labeling: 保存 / Save, キャンセル / Cancel across the app.
+
+### Robust / 堅牢
+
+- Semantic HTML first; ARIA only when semantics are insufficient.
+- Live regions for async updates (toast, inline save status) with `aria-live="polite"`.
+
+## Design System Alignment / デザインシステム整合
+
+Accessible UI still follows product visual rules:
+
+- No decorative glow/glass/AI effects that reduce readability.
+- No giant KPI cards that push actionable content below the fold.
+- Compact headers — don't bury primary tasks under long descriptive text.
+
+## Architecture / アーキテクチャ
+
+- UI calls Application Services only; accessibility testing covers rendered output, not raw provider responses.
+- Never expose secrets in client-rendered debug panels or `aria-describedby` diagnostic text.

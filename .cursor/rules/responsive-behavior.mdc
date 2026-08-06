@@ -1,0 +1,51 @@
+---
+description: Regapro AI のレスポンシブ設計 — モバイルを独立した作業体験として設計
+alwaysApply: true
+globs:
+  - "apps/web/**/*.{tsx,ts,css}"
+---
+
+# Responsive Behavior / レスポンシブ設計
+
+## Core Principle / 基本原則
+
+**Don't make mobile UI a mere vertical stack of desktop.**
+
+Mobile is a distinct work context: quick capture, status checks, lightweight approvals — not a squashed three-column layout.
+
+## Breakpoint Strategy / ブレークポイント
+
+| Breakpoint | Target | Behavior |
+|---|---|---|
+| `< 640px` | Phone | Single-focus views, bottom actions, collapsible context |
+| `640–1024px` | Tablet | Split views where useful; persistent nav drawer |
+| `≥ 1024px` | Desktop | Multi-pane layouts, side-by-side editor + context |
+
+## Layout Rules / レイアウト規則
+
+- **No double scroll**: app shell scrolls OR content pane scrolls — never both fighting the user.
+- Avoid nested `overflow-y: auto` without fixed heights; use flex/grid with `min-h-0` where needed.
+- Tables on mobile: transform to **row summaries** or horizontal scroll with sticky first column — not tiny unreadable grids inside cards.
+
+## Mobile-Specific Patterns / モバイル固有パターン
+
+- **Action bar at bottom** for primary task actions (保存、完了、次へ).
+- **Sheet / drawer** for filters and secondary panels instead of permanent sidebars.
+- **Progressive disclosure**: show essential fields first; expand for advanced options.
+- **Touch targets**: minimum 44×44px; adequate spacing (8px scale).
+
+## Visual Consistency / ビジュアル一貫性
+
+Even on small screens:
+
+- No blue-purple gradients, glow, or AI decoration flourishes.
+- No large rounded card grids or giant KPI tiles.
+- Don't wrap every item in a card — prefer compact list rows.
+- One primary button per screen section; avoid stacked equal-weight CTAs.
+
+## Product & Architecture Reminders / リマインダー
+
+- Business OS framing: mobile surfaces show **work in progress**, not a chat-first UI.
+- Organize by work units; hide internal implementation names from users.
+- Components fetch via Application Services only; no client-side secrets.
+- Ship only after `typecheck`, `lint`, `test`, `build` pass.

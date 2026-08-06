@@ -1,0 +1,51 @@
+---
+description: Regapro AI の UI デザインシステム — ビジュアル言語とコンポーネント規約
+alwaysApply: true
+globs:
+  - "apps/web/**/*.{tsx,ts,css}"
+  - "packages/ui/**/*"
+---
+
+# UI Design System / UI デザインシステム
+
+## Visual Identity / ビジュアルアイデンティティ
+
+Regapro AI looks like **professional business software**, not a generative-AI demo.
+
+### Color Tokens / カラートークン
+
+| Token | Value | Usage |
+|---|---|---|
+| `--color-accent` | `#0F766E` | Primary actions, active nav, links |
+| `--color-bg` | `#F7F7F5` | App background |
+| `--color-surface` | `#FFFFFF` | Panels, inputs, tables |
+| `--color-text` | `#1F2937` | Body text |
+| `--color-border` | `#E5E7EB` | Dividers, input borders |
+
+### Forbidden Visual Patterns / 禁止パターン
+
+- **No blue-purple gradients** — use flat surfaces and subtle borders.
+- **No glow, glassmorphism, star/sparkle, or "AI magic" decorations.**
+- **No large rounded card grids** (20px+ radius on panels, masonry KPI tiles).
+- **No giant KPI cards** — metrics belong inline in context, not as hero widgets.
+- **No huge page titles with long descriptions** — prefer compact headers; put detail in the body or help.
+
+### Layout / レイアウト
+
+- **Don't wrap everything in cards.** Use tables, lists, split panes, and inline sections.
+- **Don't stack many equally-strong buttons.** One primary action per context; secondary actions as text links or icon buttons.
+- Spacing scale: **8px base** (8, 16, 24, 32, 40, 48).
+- Border radius: **6–12px** for panels and inputs; never 20px+ for structural containers.
+- Shadows: **only** for drawers, menus, modals, and popovers — not for every list item.
+
+## Product Context Reminder / プロダクト文脈
+
+This is a **business OS**, not a chat app. Screens show work in progress (案件、タスク、成果物), not conversation threads as the default layout.
+
+Organize UI by **user work units**, not feature names. Never surface internal implementation names (Repository, Provider, Worker) to general users.
+
+## Architecture Boundary / アーキテクチャ境界
+
+UI components must **not** call Repository or Provider classes directly. All data access goes through the **Application Service** layer (server actions, route handlers, or typed client hooks that call services).
+
+Never expose secrets, service role keys, or provider API keys to the client bundle.

@@ -1,0 +1,54 @@
+---
+description: Regapro AI のプロダクト原則 — ビジネス OS としての位置づけと作業単位による設計
+alwaysApply: true
+---
+
+# Product Principles / プロダクト原則
+
+## Core Positioning / コアポジショニング
+
+Regapro AI is a **business OS** (ビジネス OS) — not an AI chat app, not a dashboard toy, and not a collection of disconnected AI features.
+
+- Users come to **do work** (案件、顧客、タスク、調査、成果物の作成・更新).
+- AI is an **embedded capability** within work flows, never the primary surface.
+- Every screen must answer: *「今、何の仕事を進めているか？」*
+
+## Organize by Work Units / 作業単位で整理する
+
+Structure navigation, routes, and copy around **user work units** (作業単位), not internal feature names or engineering module names.
+
+| Do | Don't |
+|---|---|
+| 案件一覧、今日のタスク、顧客対応 | Repository、Provider、Worker という語を UI に出す |
+| 調査 → 下書き → 成果物 | Chat、RAG、Pipeline など実装用語をメニュー名にする |
+
+Internal names (`SearXNGProvider`, `ArtifactService`, `TaskRepository`) belong in code and architecture docs only.
+
+## User-Facing Language / ユーザー向け言語
+
+- Use domain language the user already knows: 案件、顧客、タスク、議事録、提案書、調査メモ.
+- Hide implementation details: no "LLM", "embedding", "vector store" in general UI unless the user is a power user in settings.
+- Error messages describe **what to do next**, not stack traces or provider names.
+
+## What We Are Not Building / 作らないもの
+
+These are explicit anti-patterns for product framing:
+
+- A full-screen chat with sidebar features bolted on.
+- "Ask AI anything" as the home screen.
+- Feature grids marketed as "AI capabilities".
+- Giant KPI cards and vanity metrics on landing views.
+- Marketing-style hero titles with long descriptive paragraphs on every page.
+
+## Quality Bar / 品質基準
+
+Before marking work complete, all of these must pass:
+
+```bash
+npm run typecheck
+npm run lint
+npm run test
+npm run build
+```
+
+Maintain strict TypeScript; avoid casual `any`. Prefer explicit domain types and validated boundaries at the Application Service layer.

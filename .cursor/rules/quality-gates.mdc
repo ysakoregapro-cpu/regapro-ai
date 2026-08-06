@@ -1,0 +1,50 @@
+---
+description: Regapro AI の品質ゲート — マージ・リリース前の必須チェック
+alwaysApply: true
+---
+
+# Quality Gates / 品質ゲート
+
+## Mandatory Checks / 必須チェック
+
+No feature, fix, or documentation-driven code change is **complete** until all of the following pass:
+
+```bash
+npm run typecheck   # TypeScript strict — no casual `any`
+npm run lint        # ESLint across workspaces
+npm run test        # Unit and integration tests
+npm run build       # Production build succeeds
+```
+
+Or run the aggregate:
+
+```bash
+npm run check
+```
+
+## What Each Gate Enforces / 各ゲートの役割
+
+| Gate | Enforces |
+|---|---|
+| `typecheck` | Strict types; Application Service contracts; no silent `any` erosion |
+| `lint` | Code style, import boundaries, a11y lint rules where configured |
+| `test` | Domain logic, service orchestration, critical UI behavior |
+| `build` | Next.js compilation, tree-shaking, no client secret leakage |
+
+## Architecture Compliance / アーキテクチャ遵守
+
+During review, also verify (not always automated):
+
+- UI does **not** import Repository or Provider directly — Application Service layer only.
+- No secrets in client-accessible code or public env vars.
+- UI follows design system: no blue-purple gradients, glow/glass/AI decorations, giant KPI cards, card-grid layouts, or double scroll.
+- IA follows **work units**, not feature/module names; internal names hidden from general users.
+- Mobile layouts are purpose-built, not desktop columns stacked vertically.
+
+## Product Integrity / プロダクト整合性
+
+Every shipped screen should reinforce: Regapro AI is a **business OS**, not an AI chat app.
+
+## CI Expectation / CI 期待値
+
+These gates will run in CI. Local pass before push is required; fixing CI failures takes priority over new work.

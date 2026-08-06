@@ -1,0 +1,50 @@
+---
+description: Regapro AI の情報設計 — 作業単位によるナビゲーションと画面構成
+alwaysApply: true
+---
+
+# Information Architecture / 情報設計
+
+## Primary Organization / 主要な整理軸
+
+Structure the product around **work units** (作業単位), not engineering feature modules.
+
+### Top-Level Work Areas / トップレベル作業領域
+
+| Work Unit (JA) | Work Unit (EN) | Purpose |
+|---|---|---|
+| ホーム / 今日 | Home / Today | 今日やること、進行中案件の要約 |
+| 案件 | Projects / Deals | 案件ライフサイクル全体 |
+| 顧客 | Customers | 顧客・取引先情報と履歴 |
+| タスク | Tasks | 実行可能な作業項目 |
+| 調査 | Research | 情報収集とソース管理 |
+| 成果物 | Artifacts | 提案書、議事録、レポート等 |
+| 設定 | Settings | 組織・権限・連携（一般ユーザー向け名称） |
+
+### Naming Rules / 命名規則
+
+- Navigation labels use **domain language**, never `Provider`, `Repository`, `Worker`, `Pipeline`.
+- Breadcrumbs reflect the user's mental model: `案件 > 〇〇商事 > 提案書下書き`.
+- Settings group by **what the user configures**, not by backend service names.
+
+## Page Structure / ページ構成
+
+- **Compact page headers**: title + optional one-line context. No marketing hero blocks.
+- **No double scroll**: one scroll container per view; nested scroll only inside intentional panes (e.g., document editor, data table with fixed header).
+- Content-first layouts: tables, timelines, and inline editors over card grids.
+
+## Anti-Patterns / アンチパターン
+
+- Feature matrix home page with large rounded cards.
+- "AI Hub" or "Chat" as the default landing.
+- Exposing internal module names in empty states or onboarding.
+- Giant KPI cards above every list view.
+- Wrapping every list row in a bordered card.
+
+## Cross-Cutting Concerns / 横断要件
+
+- Mobile IA must be **purpose-built**, not a vertical stack of desktop columns (see `responsive-behavior.mdc`).
+- Maintain type safety in route params and page data loaders; no `any` for navigation state.
+- UI reads data via Application Services only; never direct Repository/Provider calls from components.
+
+Completion gates: `typecheck`, `lint`, `test`, `build` must pass before shipping IA changes.

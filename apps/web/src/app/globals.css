@@ -1,26 +1,176 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Color / surface */
+  --color-bg: #f7f7f5;
+  --color-surface: #ffffff;
+  --color-surface-raised: #fafaf8;
+  --color-surface-sunken: #f0f0ed;
+  --color-text: #1f2937;
+  --color-text-secondary: #6b7280;
+  --color-text-muted: #9ca3af;
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+  --color-accent: #0f766e;
+  --color-accent-hover: #0d9488;
+  --color-accent-muted: #ccfbf1;
+  --color-accent-fg: #ffffff;
+  --color-success: #15803d;
+  --color-success-muted: #dcfce7;
+  --color-warning: #b45309;
+  --color-warning-muted: #fef3c7;
+  --color-danger: #b91c1c;
+  --color-danger-muted: #fee2e2;
+  --color-info: #1d4ed8;
+  --color-info-muted: #dbeafe;
+
+  /* Spacing (8px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-pill: 9999px;
+
+  /* Typography */
+  --font-sans: var(--font-geist-sans), "Noto Sans JP", "Yu Gothic UI",
+    "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 18px;
+  --text-xl: 24px;
+  --text-2xl: 28px;
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* Layout */
+  --sidebar-width: 240px;
+  --header-height: 48px;
+  --mobile-nav-height: 56px;
+  --content-width: 1120px;
+  --right-pane-width: 360px;
+
+  /* Shadow (drawers/menus/modals only) */
+  --shadow-menu: 0 4px 16px rgba(15, 23, 42, 0.08);
+  --shadow-modal: 0 12px 40px rgba(15, 23, 42, 0.12);
+
+  /* Z-index */
+  --z-base: 1;
+  --z-sticky: 20;
+  --z-dropdown: 40;
+  --z-drawer: 50;
+  --z-modal: 60;
+  --z-toast: 70;
+
+  /* Motion */
+  --motion-fast: 120ms;
+  --motion-normal: 200ms;
+  --motion-slow: 320ms;
+
+  --background: var(--color-bg);
+  --foreground: var(--color-text);
+}
+
+.dark {
+  --color-bg: #121314;
+  --color-surface: #1a1b1c;
+  --color-surface-raised: #222324;
+  --color-surface-sunken: #0e0f10;
+  --color-text: #e8eaed;
+  --color-text-secondary: #9aa0a6;
+  --color-text-muted: #6b7280;
+  --color-border: #2d2f31;
+  --color-border-strong: #3c4043;
+  --color-accent: #14b8a6;
+  --color-accent-hover: #2dd4bf;
+  --color-accent-muted: #134e4a;
+  --color-accent-fg: #042f2e;
+  --color-success: #4ade80;
+  --color-success-muted: #14532d;
+  --color-warning: #fbbf24;
+  --color-warning-muted: #78350f;
+  --color-danger: #f87171;
+  --color-danger-muted: #7f1d1d;
+  --color-info: #60a5fa;
+  --color-info-muted: #1e3a8a;
+  --shadow-menu: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.45);
+  --background: var(--color-bg);
+  --foreground: var(--color-text);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--color-bg);
+  --color-surface: var(--color-surface);
+  --color-surface-raised: var(--color-surface-raised);
+  --color-surface-sunken: var(--color-surface-sunken);
+  --color-text: var(--color-text);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-muted: var(--color-text-muted);
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+  --color-accent: var(--color-accent);
+  --color-accent-hover: var(--color-accent-hover);
+  --color-accent-muted: var(--color-accent-muted);
+  --color-accent-fg: var(--color-accent-fg);
+  --color-success: var(--color-success);
+  --color-success-muted: var(--color-success-muted);
+  --color-warning: var(--color-warning);
+  --color-warning-muted: var(--color-warning-muted);
+  --color-danger: var(--color-danger);
+  --color-danger-muted: var(--color-danger-muted);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
+html {
+  height: 100%;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100%;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-accent-muted);
+  color: var(--color-text);
 }

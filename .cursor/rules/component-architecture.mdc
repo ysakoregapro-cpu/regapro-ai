@@ -1,0 +1,55 @@
+---
+description: Regapro AI のコンポーネント・アーキテクチャ — レイヤー分離と型安全
+alwaysApply: true
+globs:
+  - "apps/web/**/*.{tsx,ts}"
+  - "packages/**/*.{tsx,ts}"
+  - "services/**/*.{tsx,ts}"
+---
+
+# Component Architecture / コンポーネント・アーキテクチャ
+
+## Layer Model / レイヤーモデル
+
+```
+UI (React Components)
+  ↓ calls only
+Application Services (use cases, server actions, API routes)
+  ↓ orchestrates
+Domain (entities, value objects, domain services)
+  ↓ persisted via
+Repositories / Providers (interfaces + implementations)
+```
+
+## Hard Rules / 厳守事項
+
+1. **UI must NOT call Repository or Provider directly.** Components, hooks, and pages consume Application Services or typed API clients that wrap services.
+2. **Providers are swappable implementations** behind interfaces (research, LLM, storage). UI never imports `SearXNGProvider` or similar.
+3. **Never expose secrets to the client** — API keys, service role keys, and provider tokens stay server-side only.
+
+## Type Safety / 型安全
+
+- Strict TypeScript everywhere; `strict: true` in tsconfig.
+- Avoid `any`; use `unknown` + narrowing, Zod schemas at boundaries, and explicit DTO types for UI props.
+- Domain types live in shared packages; UI receives **view models**, not raw DB rows.
+
+## Component Guidelines / コンポーネント指針
+
+- **Presentational vs container**: presentational components receive data + callbacks; data fetching in server components or service hooks.
+- One primary action per action bar; secondary actions as subdued buttons or menu items.
+- Don't wrap every row in a Card — use `TableRow`, `ListItem`, or semantic `<li>`.
+- No large rounded card grids; radius 6–12px on structural elements.
+
+## Product Alignment / プロダクト整合
+
+- Components map to **work units** (案件カード、タスクリスト、成果物エディタ), not to backend module names.
+- This is a **business OS** — components support workflows, not chat bubbles as the default primitive.
+- Mobile components are purpose-designed (bottom sheets, compact rows), not stacked desktop columns.
+
+## Completion Gates / 完了条件
+
+```bash
+npm run typecheck && npm run lint && npm run test && npm run build
+```
+
+All must pass before merging UI or service-layer changes.

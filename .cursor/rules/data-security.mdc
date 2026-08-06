@@ -1,0 +1,47 @@
+---
+description: Regapro AI のデータセキュリティ — 秘密情報の保護と RLS 原則
+alwaysApply: true
+---
+
+# Data Security / データセキュリティ
+
+## Never Expose Secrets to Client / クライアントに秘密を出さない
+
+The following must **never** appear in client bundles, `NEXT_PUBLIC_*` variables (unless explicitly safe), or browser-accessible API responses:
+
+| Secret Type | Examples |
+|---|---|
+| Database | Supabase `service_role` key |
+| External AI | OpenAI, Anthropic, Tavily, Exa API keys |
+| Research | SearXNG admin tokens (if any) |
+| Infrastructure | Cron secrets, webhook signing keys |
+
+Use server-side Application Services and Edge Functions for all privileged operations.
+
+## Row-Level Security / 行レベルセキュリティ
+
+- All tenant-scoped tables **must** have RLS enabled in Supabase.
+- Policies enforce organization membership and role permissions — never rely on client-side filtering alone.
+- See `docs/architecture/rls-matrix.md` and `docs/architecture/permission-matrix.md`.
+
+## Data Flow Rules / データフロー規則
+
+1. Browser → authenticated API route / server action → Application Service → Repository (with user JWT context).
+2. Background workers use service role **only** in isolated worker processes, never in Next.js client components.
+3. Research providers (SearXNG primary; Tavily/Firecrawl/Exa as fallback interfaces) execute **server-side only**.
+
+## UI Security / UI セキュリティ
+
+- Don't display internal implementation names that aid reconnaissance (provider class names, table names) to general users.
+- Error responses: generic message to user, detailed log server-side.
+- Audit sensitive actions (permission changes, export, delete) at the Application Service layer.
+
+## Type Safety as Security / 型安全とセキュリティ
+
+- Validate all external input with schemas at service boundaries.
+- Avoid `any` on auth context and permission checks — typed roles and capability enums.
+- `lint`, `typecheck`, `test`, `build` are mandatory gates before deployment.
+
+## Product Context / プロダクト文脈
+
+Regapro AI is a **business OS** handling customer and deal data. Security failures are business failures — not acceptable tradeoffs for faster AI demos.
