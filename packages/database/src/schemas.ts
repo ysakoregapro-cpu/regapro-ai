@@ -8,10 +8,23 @@ export const SoftDeleteSchema = z.object({
 
 export const VisibilitySchema = z.enum([
   "private",
-  "team",
-  "department",
+  "participants",
   "project",
+  "department",
   "organization",
+  "restricted",
+]);
+
+export const ConfidentialityLevelIntSchema = z.union([
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+]);
+
+export const ConfidentialityKeySchema = z.enum([
+  "company",
+  "people",
+  "executive",
 ]);
 
 export const OrganizationSchema = z
@@ -31,6 +44,8 @@ export const DepartmentSchema = z
     id: UuidSchema,
     orgId: UuidSchema,
     name: z.string().min(1),
+    key: z.enum(["sales", "people", "executive_strategy"]).nullable().optional(),
+    defaultClearanceLevel: ConfidentialityLevelIntSchema.default(1),
     createdAt: TimestampSchema,
     updatedAt: TimestampSchema,
   })
@@ -72,7 +87,16 @@ export const ChatThreadSchema = z
     id: UuidSchema,
     orgId: UuidSchema,
     projectId: UuidSchema.nullable().optional(),
+    departmentId: UuidSchema.nullable().optional(),
     title: z.string().min(1),
+    confidentialityLevel: ConfidentialityKeySchema.default("company"),
+    visibility: VisibilitySchema.default("private"),
+    ownerUserId: UuidSchema,
+    securityLabelSource: z.string().default("user"),
+    minimumDerivedLevel: ConfidentialityKeySchema.default("company"),
+    containsSensitiveContent: z.boolean().default(false),
+    classificationReviewedAt: TimestampSchema.nullable().optional(),
+    classificationReviewedBy: UuidSchema.nullable().optional(),
     createdAt: TimestampSchema,
     updatedAt: TimestampSchema,
   })

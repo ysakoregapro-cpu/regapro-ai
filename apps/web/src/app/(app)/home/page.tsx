@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { PageHeader, SectionHeader, ListRow, StatusBadge } from "@/components/ui/primitives";
+import { HomeAskComposer } from "@/components/chat/HomeAskComposer";
 import { getHomeDashboard, projectName, userName } from "@/lib/application/catalog-service";
+import { resolveSessionAccess } from "@/lib/data/dev-sample/memberships";
 
 export const metadata = { title: "ホーム" };
 
 export default function HomePage() {
   const data = getHomeDashboard();
+  const session = resolveSessionAccess();
+  const locked = session.selectableLevels.length <= 1;
 
   return (
     <div className="space-y-8">
@@ -22,17 +26,11 @@ export default function HomePage() {
         }
       />
 
-      <form action="/assistant" className="border-b border-border pb-6">
-        <label htmlFor="home-ask" className="sr-only">
-          依頼内容
-        </label>
-        <input
-          id="home-ask"
-          name="q"
-          placeholder="何を進めますか？　例）明日までに森藤さんへ求人選定を確認"
-          className="h-11 w-full rounded-md border border-border bg-surface px-3 text-[14px] outline-none placeholder:text-text-muted focus:border-accent"
-        />
-      </form>
+      <HomeAskComposer
+        selectableLevels={session.selectableLevels}
+        defaultLevel="company"
+        locked={locked}
+      />
 
       <section>
         <SectionHeader title="今日のタスク" />

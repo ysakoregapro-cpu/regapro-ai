@@ -31,6 +31,7 @@ export const ADMIN_NAV = [
   { href: "/admin/connections", label: "システム接続" },
   { href: "/admin/usage", label: "利用状況" },
   { href: "/admin/audit", label: "監査ログ" },
+  { href: "/admin/conversation-audit", label: "会話監査" },
   { href: "/admin/diagnostics", label: "診断情報" },
 ] as const;
 

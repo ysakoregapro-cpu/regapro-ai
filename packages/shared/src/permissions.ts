@@ -20,6 +20,11 @@ export const PERMISSIONS = [
   "member:manage",
   "audit:read",
   "system:diagnose",
+  "conversation:read_own",
+  "conversation:share",
+  "conversation:audit",
+  "conversation:audit_manage",
+  "clearance:manage",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -27,19 +32,10 @@ export type Permission = (typeof PERMISSIONS)[number];
 export const ROLES = ["member", "editor", "manager", "admin"] as const;
 export type Role = (typeof ROLES)[number];
 
-export const VISIBILITY_LEVELS = [
-  "private",
-  "team",
-  "department",
-  "project",
-  "organization",
-] as const;
-
-export type Visibility = (typeof VISIBILITY_LEVELS)[number];
-
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   member: [
     "chat:use",
+    "conversation:read_own",
     "knowledge:read",
     "project:read",
     "task:read",
@@ -49,6 +45,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ],
   editor: [
     "chat:use",
+    "conversation:read_own",
+    "conversation:share",
     "knowledge:read",
     "knowledge:write",
     "research:run",
@@ -63,6 +61,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ],
   manager: [
     "chat:use",
+    "conversation:read_own",
+    "conversation:share",
     "knowledge:read",
     "knowledge:write",
     "knowledge:review",
@@ -81,5 +81,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "member:manage",
     "audit:read",
   ],
+  // conversation:audit is intentionally NOT auto-granted with executive clearance.
+  // Only admin gets it by default; grant narrowly via membership for real audits.
   admin: [...PERMISSIONS],
 };

@@ -3,7 +3,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell, ChevronDown, FolderKanban, Menu, Plus, Search, User } from "lucide-react";
-import { CURRENT_USER, SAMPLE_NOTIFICATIONS, SAMPLE_PROJECTS } from "@/lib/data/dev-sample/catalog";
+import { CURRENT_MEMBERSHIP } from "@/lib/data/dev-sample/memberships";
+import { SAMPLE_NOTIFICATIONS, SAMPLE_PROJECTS } from "@/lib/data/dev-sample/catalog";
 import { cn } from "@/lib/cn";
 
 export function TopBar({
@@ -169,7 +170,7 @@ function ProfileMenu() {
         <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-surface-sunken">
           <User className="h-3.5 w-3.5" />
         </span>
-        <span className="hidden text-[12px] md:inline">{CURRENT_USER.name}</span>
+        <span className="hidden text-[12px] md:inline">{CURRENT_MEMBERSHIP.name}</span>
       </button>
       {open ? (
         <div
@@ -177,8 +178,8 @@ function ProfileMenu() {
           className="absolute right-0 z-[40] mt-1 w-52 rounded-[12px] border border-border bg-surface py-1 shadow-[var(--shadow-menu)]"
         >
           <div className="border-b border-border px-3 py-2">
-            <p className="text-[13px] font-medium">{CURRENT_USER.name}</p>
-            <p className="text-[11px] text-text-secondary">{CURRENT_USER.department}</p>
+            <p className="text-[13px] font-medium">{CURRENT_MEMBERSHIP.name}</p>
+            <p className="text-[11px] text-text-secondary">{CURRENT_MEMBERSHIP.departmentLabel}</p>
           </div>
           <Link href="/workspace" className="block px-3 py-2 text-[13px] hover:bg-surface-raised md:hidden">
             ワークスペース

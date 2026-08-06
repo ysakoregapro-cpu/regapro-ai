@@ -1,5 +1,6 @@
-import { createClient } from "./server";
+import { CURRENT_MEMBERSHIP } from "@/lib/data/dev-sample/memberships";
 import { isDevSampleMode } from "./env";
+import { createClient } from "./server";
 
 export type SessionUser = {
   id: string;
@@ -10,9 +11,9 @@ export type SessionUser = {
 export async function getSessionUser(): Promise<SessionUser | null> {
   if (isDevSampleMode()) {
     return {
-      id: "00000000-0000-4000-8000-000000000001",
-      email: "tanaka@regapro.example",
-      displayName: "田中 健太",
+      id: CURRENT_MEMBERSHIP.userId,
+      email: CURRENT_MEMBERSHIP.email,
+      displayName: CURRENT_MEMBERSHIP.name,
     };
   }
 

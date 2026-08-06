@@ -1,5 +1,5 @@
+import { CURRENT_MEMBERSHIP } from "@/lib/data/dev-sample/memberships";
 import { PageHeader, ConnectionStatus } from "@/components/ui/primitives";
-import { CURRENT_USER } from "@/lib/data/dev-sample/catalog";
 
 export const metadata = { title: "設定" };
 
@@ -12,15 +12,19 @@ export default function SettingsPage() {
         <dl className="space-y-2 text-[13px]">
           <div className="flex justify-between border-b border-border py-2">
             <dt className="text-text-secondary">氏名</dt>
-            <dd>{CURRENT_USER.name}</dd>
+            <dd>{CURRENT_MEMBERSHIP.name}</dd>
           </div>
           <div className="flex justify-between border-b border-border py-2">
             <dt className="text-text-secondary">部署</dt>
-            <dd>{CURRENT_USER.department}</dd>
+            <dd>{CURRENT_MEMBERSHIP.departmentLabel}</dd>
+          </div>
+          <div className="flex justify-between border-b border-border py-2">
+            <dt className="text-text-secondary">役職</dt>
+            <dd>{CURRENT_MEMBERSHIP.title}</dd>
           </div>
           <div className="flex justify-between border-b border-border py-2">
             <dt className="text-text-secondary">メール</dt>
-            <dd>{CURRENT_USER.email}</dd>
+            <dd>{CURRENT_MEMBERSHIP.email}</dd>
           </div>
         </dl>
       </section>

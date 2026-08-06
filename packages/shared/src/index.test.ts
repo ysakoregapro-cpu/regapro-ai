@@ -1,4 +1,12 @@
 import { describe, expect, it } from "vitest";
+import {
+  ConfidentialityLevelSchema,
+  compareConfidentiality,
+  DEPARTMENT_DEFAULT_CLEARANCE,
+  resolveEffectiveClearance,
+  selectableLevelsForClearance,
+  inheritSecurityLabel,
+} from "./index.js";
 import { loadRegaproEnv, parseDataMode, RegaproEnvError } from "./env.js";
 import {
   parseJapaneseRelativeDate,
@@ -24,6 +32,52 @@ describe("env validation", () => {
     expect(() => loadRegaproEnv({ REGAPRO_DATA_MODE: "local" })).toThrow(
       RegaproEnvError,
     );
+  });
+});
+
+describe("confidentiality model", () => {
+  it("parses levels", () => {
+    expect(ConfidentialityLevelSchema.parse("company")).toBe("company");
+    expect(() => ConfidentialityLevelSchema.parse("4")).toThrow();
+  });
+
+  it("compares ranks", () => {
+    expect(compareConfidentiality("executive", "people")).toBeGreaterThan(0);
+  });
+
+  it("department defaults", () => {
+    expect(DEPARTMENT_DEFAULT_CLEARANCE.sales).toBe("company");
+    expect(DEPARTMENT_DEFAULT_CLEARANCE.people).toBe("people");
+    expect(DEPARTMENT_DEFAULT_CLEARANCE.executive_strategy).toBe("executive");
+  });
+
+  it("applies clearance override", () => {
+    expect(
+      resolveEffectiveClearance({
+        departmentKey: "sales",
+        clearanceOverride: "people",
+      }),
+    ).toBe("people");
+  });
+
+  it("lists selectable levels", () => {
+    expect(selectableLevelsForClearance("people")).toEqual([
+      "company",
+      "people",
+    ]);
+  });
+
+  it("inherits security label", () => {
+    const child = inheritSecurityLabel(
+      {
+        confidentialityLevel: "people",
+        visibility: "private",
+        ownerUserId: "u1",
+      },
+      { originThreadId: "t1" },
+    );
+    expect(child.confidentialityLevel).toBe("people");
+    expect(child.securityLabelSource).toBe("inherited");
   });
 });
 

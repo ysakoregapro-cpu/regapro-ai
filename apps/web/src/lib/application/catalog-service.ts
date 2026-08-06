@@ -14,7 +14,12 @@ import {
   projectName,
   userName,
 } from "@/lib/data/dev-sample/catalog";
+import { CURRENT_MEMBERSHIP } from "@/lib/data/dev-sample/memberships";
 import { isDevSampleMode } from "@/lib/supabase/env";
+import { searchAccessible } from "@/lib/application/chat-service";
+import { resolveSessionAccess } from "@/lib/data/dev-sample/memberships";
+import { filterResourcesByAccess } from "@regapro/security";
+import type { ConfidentialityLevel, Visibility } from "@regapro/shared";
 
 export type HomeDashboard = {
   greetingName: string;
@@ -46,7 +51,7 @@ export function getHomeDashboard(): HomeDashboard {
       (t.dueAt.startsWith("2026-08-07") || t.dueAt.startsWith("2026-08-08"))
   );
   return {
-    greetingName: CURRENT_USER.name,
+    greetingName: CURRENT_MEMBERSHIP.name,
     todayTasks: today.length ? today : SAMPLE_TASKS.filter((t) => t.status === "todo").slice(0, 2),
     dueSoonTasks: dueSoon,
     needsAttention: [
@@ -144,6 +149,12 @@ export function searchAll(query: string): SearchHit[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
 
+  const base = resolveSessionAccess();
+  const session = resolveSessionAccess({
+    userId: base.membership.userId,
+    threadLevel: base.maximumConfidentialityLevel,
+    threadVisibility: "organization",
+  });
   const hits: SearchHit[] = [];
 
   for (const t of SAMPLE_TASKS) {
@@ -159,7 +170,16 @@ export function searchAll(query: string): SearchHit[] {
       });
     }
   }
-  for (const k of SAMPLE_KNOWLEDGE) {
+
+  const knowledgeRows = SAMPLE_KNOWLEDGE.map((k) => ({
+    id: k.id,
+    confidentialityLevel: k.confidentialityLevel as ConfidentialityLevel,
+    visibility: k.visibility as Visibility,
+    ownerUserId: "system",
+    raw: k,
+  }));
+  for (const row of filterResourcesByAccess(session.access, knowledgeRows)) {
+    const k = row.raw;
     if (k.title.toLowerCase().includes(q) || k.category.toLowerCase().includes(q)) {
       hits.push({
         id: k.id,
@@ -172,19 +192,20 @@ export function searchAll(query: string): SearchHit[] {
       });
     }
   }
-  for (const th of SAMPLE_THREADS) {
-    if (th.title.toLowerCase().includes(q) || th.preview.toLowerCase().includes(q)) {
-      hits.push({
-        id: th.id,
-        kind: "チャット",
-        title: th.title,
-        snippet: th.preview,
-        project: projectName(th.projectId),
-        updatedAt: th.updatedAt.slice(0, 10),
-        source: "アシスタント",
-      });
-    }
+
+  // Private chats of others are excluded inside searchAccessible
+  for (const h of searchAccessible(q, session.membership.userId)) {
+    hits.push({
+      id: h.id,
+      kind: h.kind,
+      title: h.title,
+      snippet: h.snippet,
+      project: "—",
+      updatedAt: "—",
+      source: "アシスタント",
+    });
   }
+
   for (const d of SAMPLE_DOCUMENTS) {
     if (d.title.toLowerCase().includes(q)) {
       hits.push({

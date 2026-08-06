@@ -1,42 +1,33 @@
 /** Coherent Regapro corp sample data for REGAPRO_DATA_MODE=dev-sample */
 
+import {
+  CURRENT_MEMBERSHIP,
+  SAMPLE_MEMBERSHIPS,
+} from "@/lib/data/dev-sample/memberships";
+
 export const SAMPLE_ORG = {
   id: "org-regapro",
   name: "株式会社レガプロ",
 } as const;
 
-export const SAMPLE_USERS = [
-  {
-    id: "user-tanaka",
-    name: "田中 健太",
-    email: "tanaka@regapro.example",
-    department: "有料職業紹介",
-    role: "manager" as const,
-  },
-  {
-    id: "user-morifuji",
-    name: "森藤 美穂",
-    email: "morifuji@regapro.example",
-    department: "有料職業紹介",
-    role: "editor" as const,
-  },
-  {
-    id: "user-sato",
-    name: "佐藤 悠",
-    email: "sato@regapro.example",
-    department: "DX開発",
-    role: "member" as const,
-  },
-  {
-    id: "user-admin",
-    name: "管理 太郎",
-    email: "admin@regapro.example",
-    department: "経営企画",
-    role: "admin" as const,
-  },
-] as const;
+/** Single source: memberships fixture. Do not hardcode names elsewhere. */
+export const SAMPLE_USERS = SAMPLE_MEMBERSHIPS.map((m) => ({
+  id: m.userId,
+  name: m.name,
+  email: m.email,
+  department: m.departmentLabel,
+  role: m.role,
+  title: m.title,
+}));
 
-export const CURRENT_USER = SAMPLE_USERS[0];
+export const CURRENT_USER = {
+  id: CURRENT_MEMBERSHIP.userId,
+  name: CURRENT_MEMBERSHIP.name,
+  email: CURRENT_MEMBERSHIP.email,
+  department: CURRENT_MEMBERSHIP.departmentLabel,
+  role: CURRENT_MEMBERSHIP.role,
+  title: CURRENT_MEMBERSHIP.title,
+};
 
 export const SAMPLE_PROJECTS = [
   {
@@ -216,6 +207,7 @@ export const SAMPLE_KNOWLEDGE = [
     freshness: "良好",
     approvalStatus: "published" as const,
     visibility: "organization" as const,
+    confidentialityLevel: "company" as const,
   },
   {
     id: "know-2",
@@ -227,6 +219,7 @@ export const SAMPLE_KNOWLEDGE = [
     freshness: "要確認",
     approvalStatus: "approved" as const,
     visibility: "project" as const,
+    confidentialityLevel: "company" as const,
   },
   {
     id: "know-3",
@@ -237,7 +230,32 @@ export const SAMPLE_KNOWLEDGE = [
     updatedAt: "2026-08-01",
     freshness: "良好",
     approvalStatus: "review" as const,
-    visibility: "team" as const,
+    visibility: "participants" as const,
+    confidentialityLevel: "company" as const,
+  },
+  {
+    id: "know-4",
+    title: "応募者面接評価の共有手順（人事）",
+    category: "人事",
+    business: "採用・人事",
+    projectId: "proj-hr",
+    updatedAt: "2026-08-02",
+    freshness: "良好",
+    approvalStatus: "published" as const,
+    visibility: "department" as const,
+    confidentialityLevel: "people" as const,
+  },
+  {
+    id: "know-5",
+    title: "役員会向け資金計画の要点",
+    category: "経営",
+    business: "経営企画",
+    projectId: "proj-dx",
+    updatedAt: "2026-08-01",
+    freshness: "良好",
+    approvalStatus: "published" as const,
+    visibility: "restricted" as const,
+    confidentialityLevel: "executive" as const,
   },
 ] as const;
 

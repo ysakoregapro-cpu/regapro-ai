@@ -16,16 +16,22 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, ListRow, StatusBadge } from "@/components/ui/primitives";
+import { InformationLevelSelector } from "@/components/chat/InformationLevelSelector";
 import {
-  getThreadMessages,
-  listTasks,
-  listThreads,
-  projectName,
-} from "@/lib/application/catalog-service";
+  createDerivedViaApi,
+  ensureThreadReply,
+  fetchThreadBundle,
+  fetchThreadList,
+  type ThreadListItem,
+} from "@/lib/application/chat-api-client";
+import { listTasks, projectName } from "@/lib/application/catalog-service";
 import { interpretTaskUtterance } from "@/lib/application/task-interpreter";
 import { cn } from "@/lib/cn";
 import { SAMPLE_DOCUMENTS } from "@/lib/data/dev-sample/catalog";
+import { resolveSessionAccess } from "@/lib/data/dev-sample/memberships";
 import { ASSISTANT_TOOLS } from "@/lib/navigation";
+import type { ConfidentialityLevel } from "@regapro/shared";
+import { CONFIDENTIALITY_LABELS } from "@regapro/shared";
 
 type LocalMessage = {
   id: string;
@@ -46,18 +52,36 @@ type ArtifactItem = {
 
 type RightTab = "citations" | "tasks" | "artifacts";
 
+function toLocalMessages(
+  messages: { id: string; threadId: string; role: string; content: string; createdAt: string }[],
+): LocalMessage[] {
+  return messages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({
+      id: m.id,
+      threadId: m.threadId,
+      role: m.role as "user" | "assistant",
+      content: m.content,
+      createdAt: m.createdAt,
+    }));
+}
+
 export default function AssistantPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const threads = useMemo(() => listThreads(), []);
-  const initialThread = params.get("thread") ?? threads[0]?.id ?? null;
+  const session = useMemo(() => resolveSessionAccess(), []);
+  const initialThread = params.get("thread");
   const initialQuery = params.get("q") ?? "";
+  const started = params.get("started") === "1";
 
+  const [threads, setThreads] = useState<ThreadListItem[]>([]);
   const [threadId, setThreadId] = useState<string | null>(initialThread);
-  const [messages, setMessages] = useState<LocalMessage[]>(() =>
-    initialThread ? (getThreadMessages(initialThread) as LocalMessage[]) : []
-  );
-  const [input, setInput] = useState(initialQuery);
+  const [messages, setMessages] = useState<LocalMessage[]>([]);
+  const [threadLevel, setThreadLevel] = useState<ConfidentialityLevel>("company");
+  const [threadTitle, setThreadTitle] = useState("新しい依頼");
+  const [threadProjectId, setThreadProjectId] = useState<string | null>(null);
+  const [loadingThread, setLoadingThread] = useState(Boolean(initialThread));
+  const [input, setInput] = useState(started ? "" : initialQuery);
   const [activeTools, setActiveTools] = useState<string[]>([]);
   const [generating, setGenerating] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -66,30 +90,90 @@ export default function AssistantPage() {
   const [correctionOpen, setCorrectionOpen] = useState<Record<string, boolean>>({});
   const [corrections, setCorrections] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<string | null>(null);
+  const [levelAdvice, setLevelAdvice] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef(false);
 
-  const activeThread = threads.find((t) => t.id === threadId) ?? null;
-
   const syncThreadParam = useCallback(
-    (id: string | null) => {
+    (id: string | null, clearStarted = true) => {
       const next = new URLSearchParams(params.toString());
       if (id) next.set("thread", id);
       else next.delete("thread");
       next.delete("q");
+      if (clearStarted) next.delete("started");
       const qs = next.toString();
       router.replace(qs ? `/assistant?${qs}` : "/assistant", { scroll: false });
     },
     [params, router]
   );
 
+  const refreshThreadList = useCallback(async () => {
+    const list = await fetchThreadList();
+    setThreads(list);
+    return list;
+  }, []);
+
+  const loadThread = useCallback(async (id: string, opts?: { requestReply?: boolean }) => {
+    setLoadingThread(true);
+    try {
+      const bundle = await fetchThreadBundle(id);
+      if (!bundle) {
+        setMessages([]);
+        setToast("会話を読み込めませんでした");
+        return;
+      }
+      setThreadTitle(bundle.thread.title);
+      setThreadLevel(bundle.thread.confidentialityLevel);
+      setThreadProjectId(bundle.thread.projectId);
+      let msgs = toLocalMessages(bundle.messages);
+      setMessages(msgs);
+
+      const last = msgs[msgs.length - 1];
+      const needsReply = last?.role === "user";
+      if (opts?.requestReply && needsReply) {
+        setGenerating(true);
+        const replied = await ensureThreadReply(id, `reply:${id}:${last.id}`);
+        if (replied) {
+          msgs = toLocalMessages(replied.messages);
+          setMessages(msgs);
+        }
+        setGenerating(false);
+        setRightTab("citations");
+      }
+    } finally {
+      setLoadingThread(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void refreshThreadList();
+    }, 0);
+    return () => window.clearTimeout(handle);
+  }, [refreshThreadList]);
+
+  useEffect(() => {
+    if (!threadId) return;
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        await loadThread(threadId, { requestReply: started });
+        if (!cancelled && started) syncThreadParam(threadId, true);
+      })();
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [threadId, started, loadThread, syncThreadParam]);
+
   const selectThread = useCallback(
     (id: string) => {
-      setThreadId(id);
-      setMessages(getThreadMessages(id) as LocalMessage[]);
       setDrawerOpen(false);
-      syncThreadParam(id);
+      setLevelAdvice(null);
+      setThreadId(id);
+      syncThreadParam(id, true);
     },
     [syncThreadParam]
   );
@@ -107,13 +191,13 @@ export default function AssistantPage() {
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
   const citations = lastAssistant?.citations ?? [];
   const relatedTasks = useMemo(() => {
-    if (!activeThread) return [];
-    return listTasks("all").filter((t) => t.projectId === activeThread.projectId).slice(0, 5);
-  }, [activeThread]);
+    if (!threadProjectId) return [];
+    return listTasks("all").filter((t) => t.projectId === threadProjectId).slice(0, 5);
+  }, [threadProjectId]);
   const relatedArtifacts = useMemo(() => {
-    if (!activeThread) return [];
-    return SAMPLE_DOCUMENTS.filter((d) => d.projectId === activeThread.projectId);
-  }, [activeThread]);
+    if (!threadProjectId) return [];
+    return SAMPLE_DOCUMENTS.filter((d) => d.projectId === threadProjectId);
+  }, [threadProjectId]);
 
   const toggleTool = (id: string) => {
     setActiveTools((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -128,52 +212,61 @@ export default function AssistantPage() {
     const text = input.trim();
     if (!text || generating) return;
 
-    let currentThreadId = threadId;
-    if (!currentThreadId) {
-      currentThreadId = `thread-new-${Date.now()}`;
-      setThreadId(currentThreadId);
-      syncThreadParam(currentThreadId);
+    if (!threadId) {
+      const key = crypto.randomUUID();
+      const res = await fetch("/api/chat/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": key,
+        },
+        body: JSON.stringify({
+          content: text,
+          requestedLevel: threadLevel,
+          idempotencyKey: key,
+        }),
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        threadId?: string;
+        message?: string;
+        restoreContent?: string;
+      };
+      if (!data.ok || !data.threadId) {
+        if (data.restoreContent != null) setInput(data.restoreContent);
+        else setInput(text);
+        setToast(data.message ?? "会話を開始できませんでした");
+        return;
+      }
+      setInput("");
+      setThreadId(data.threadId);
+      await refreshThreadList();
+      await loadThread(data.threadId, { requestReply: true });
+      syncThreadParam(data.threadId, true);
+      return;
     }
 
-    const userMsg: LocalMessage = {
-      id: `msg-u-${Date.now()}`,
-      threadId: currentThreadId,
-      role: "user",
-      content: text,
-      createdAt: new Date().toISOString(),
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
     setGenerating(true);
-    abortRef.current = false;
-
-    await new Promise((r) => setTimeout(r, 700));
-    if (abortRef.current) return;
-
-    const toolLabel = activeTools.length
-      ? ASSISTANT_TOOLS.filter((t) => activeTools.includes(t.id))
-          .map((t) => t.label)
-          .join("、")
-      : "社内情報";
-
-    const assistantMsg: LocalMessage = {
-      id: `msg-a-${Date.now()}`,
-      threadId: currentThreadId,
-      role: "assistant",
-      content: `「${text}」について、${toolLabel}を参照して整理しました。\n\n要点を3行でまとめ、次のアクション案を右ペインに載せています。詳細が必要な場合は続けて指示してください。`,
-      createdAt: new Date().toISOString(),
-      citations: citations.length
-        ? citations
-        : [
-            { id: "cite-auto-1", title: "関連ナレッジ（自動抽出）", source: "ナレッジ" },
-            { id: "cite-auto-2", title: "直近ドキュメント", source: "ドキュメント" },
-          ],
+    const kept = text;
+    setInput("");
+    const follow = await fetch(`/api/chat/threads/${threadId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: text }),
+    });
+    if (!follow.ok) {
+      setInput(kept);
+      setToast("送信に失敗しました。入力内容は残しています。");
+      setGenerating(false);
+      return;
+    }
+    const data = (await follow.json()) as {
+      messages?: { id: string; threadId: string; role: string; content: string; createdAt: string }[];
     };
-
-    setMessages((prev) => [...prev, assistantMsg]);
+    if (data.messages) setMessages(toLocalMessages(data.messages));
     setGenerating(false);
     setRightTab("citations");
+    await refreshThreadList();
   };
 
   const copyMessage = async (content: string) => {
@@ -240,20 +333,68 @@ export default function AssistantPage() {
           >
             <Menu className="h-4 w-4" />
           </button>
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[15px] font-semibold">
-              {activeThread?.title ?? "新しい依頼"}
-            </h1>
-            {activeThread ? (
-              <p className="truncate text-[11px] text-text-secondary">
-                {projectName(activeThread.projectId)}
-              </p>
-            ) : null}
+          <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-[15px] font-semibold">
+                {threadTitle}
+              </h1>
+              {threadProjectId ? (
+                <p className="truncate text-[11px] text-text-secondary">
+                  {projectName(threadProjectId)}
+                </p>
+              ) : null}
+            </div>
+            <InformationLevelSelector
+              className="self-end sm:self-start"
+              value={threadLevel}
+              selectableLevels={session.selectableLevels}
+              locked={session.selectableLevels.length <= 1}
+              onChange={async (level) => {
+                if (!threadId) {
+                  setThreadLevel(level);
+                  return;
+                }
+                const res = await fetch("/api/chat/level", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ threadId, newLevel: level }),
+                });
+                const data = (await res.json()) as {
+                  ok: boolean;
+                  message?: string;
+                  advice?: string;
+                };
+                if (!data.ok) {
+                  setLevelAdvice(data.advice ?? data.message ?? null);
+                  throw new Error(data.message ?? "変更できませんでした");
+                }
+                setThreadLevel(level);
+                setLevelAdvice(null);
+                setToast(`情報区分を「${CONFIDENTIALITY_LABELS[level]}」に更新しました`);
+              }}
+            />
           </div>
         </header>
+        {levelAdvice ? (
+          <div className="border-b border-border px-3 py-2 text-[12px] text-text-secondary">
+            <p>{levelAdvice}</p>
+            <button
+              type="button"
+              className="mt-1 text-accent underline"
+              onClick={() => {
+                setLevelAdvice(null);
+                setToast("公開用の新しい会話はホームから作成してください");
+              }}
+            >
+              公開可能な内容を新しいスレッドへ抽出
+            </button>
+          </div>
+        ) : null}
 
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-1 py-3 lg:px-3">
-          {messages.length === 0 ? (
+          {loadingThread ? (
+            <p className="py-8 text-[13px] text-text-secondary">会話を読み込んでいます…</p>
+          ) : messages.length === 0 ? (
             <EmptyState
               title="依頼内容を入力してください"
               description="社内情報の整理、文面作成、タスク化などをこの画面から進められます"
@@ -290,9 +431,27 @@ export default function AssistantPage() {
                   onCorrectionChange={(v) => setCorrections((c) => ({ ...c, [msg.id]: v }))}
                   onMakeTask={() => {
                     const draft = interpretTaskUtterance(msg.content);
-                    setToast(`タスク下書き：${draft.title}`);
+                    if (threadId) {
+                      void createDerivedViaApi({
+                        threadId,
+                        messageId: msg.id,
+                        kind: "task",
+                        title: draft.title,
+                      });
+                    }
+                    setToast(`タスク下書き：${draft.title}（情報区分を継承）`);
                   }}
-                  onKnowledgeCandidate={() => setToast("ナレッジ候補に追加しました")}
+                  onKnowledgeCandidate={() => {
+                    if (threadId) {
+                      void createDerivedViaApi({
+                        threadId,
+                        messageId: msg.id,
+                        kind: "knowledge_candidate",
+                        title: "ナレッジ候補",
+                      });
+                    }
+                    setToast("ナレッジ候補を追加しました（原文の個人相談は公開しません）");
+                  }}
                   onOpenArtifact={() => setRightTab("artifacts")}
                 />
               ))}
@@ -383,7 +542,7 @@ function ThreadList({
   onSelect,
   className,
 }: {
-  threads: ReturnType<typeof listThreads>;
+  threads: ThreadListItem[];
   activeId: string | null;
   onSelect: (id: string) => void;
   className?: string;
@@ -401,9 +560,9 @@ function ThreadList({
           )}
         >
           <span className="truncate text-[13px] font-medium">{t.title}</span>
-          <span className="truncate text-[11px] text-text-secondary">{t.preview}</span>
           <span className="text-[10px] text-text-muted">
-            {projectName(t.projectId)} · {t.updatedAt.slice(0, 10)}
+            {t.projectId ? projectName(t.projectId) : "個人"} · {t.updatedAt.slice(0, 10)} ·{" "}
+            {CONFIDENTIALITY_LABELS[t.confidentialityLevel]}
           </span>
         </button>
       ))}

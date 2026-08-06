@@ -10,11 +10,12 @@ export type TaskDraft = {
   raw: string;
 };
 
-const ASSIGNEE_HINTS: { pattern: RegExp; name: string }[] = [
-  { pattern: /森藤/, name: "森藤 美穂" },
-  { pattern: /田中/, name: "田中 健太" },
-  { pattern: /佐藤/, name: "佐藤 悠" },
-];
+import { SAMPLE_MEMBERSHIPS } from "@/lib/data/dev-sample/memberships";
+
+const ASSIGNEE_HINTS = SAMPLE_MEMBERSHIPS.map((m) => ({
+  pattern: new RegExp(m.name.split(/\s+/)[0] ?? m.name),
+  name: m.name,
+}));
 
 const PROJECT_HINTS: { pattern: RegExp; name: string }[] = [
   { pattern: /求人|職業紹介|求職/, name: "有料職業紹介" },
