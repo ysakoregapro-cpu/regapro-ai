@@ -5,55 +5,6 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "vector";
 
 -- ---------------------------------------------------------------------------
--- Helpers (mirrored in @regapro/security as pure TS documentation)
--- ---------------------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.regapro_current_user_id()
-RETURNS uuid
-LANGUAGE sql
-STABLE
-AS $$
-  SELECT auth.uid();
-$$;
-
-CREATE OR REPLACE FUNCTION public.regapro_is_org_member(p_org_id uuid)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.organization_memberships om
-    WHERE om.org_id = p_org_id
-      AND om.user_id = auth.uid()
-      AND om.deleted_at IS NULL
-  );
-$$;
-
-CREATE OR REPLACE FUNCTION public.regapro_has_permission(p_org_id uuid, p_permission text)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.organization_memberships om
-    JOIN public.membership_roles mr ON mr.membership_id = om.id AND mr.deleted_at IS NULL
-    JOIN public.roles r ON r.id = mr.role_id AND r.deleted_at IS NULL
-    JOIN public.role_permissions rp ON rp.role_id = r.id AND rp.deleted_at IS NULL
-    JOIN public.permissions p ON p.id = rp.permission_id AND p.deleted_at IS NULL
-    WHERE om.org_id = p_org_id
-      AND om.user_id = auth.uid()
-      AND om.deleted_at IS NULL
-      AND p.key = p_permission
-  );
-$$;
-
--- ---------------------------------------------------------------------------
 -- Core org / auth tables
 -- ---------------------------------------------------------------------------
 
@@ -596,6 +547,57 @@ CREATE TABLE public.file_objects (
 );
 
 -- ---------------------------------------------------------------------------
+-- Helpers (mirrored in @regapro/security as pure TS documentation)
+-- Must follow tables they reference: organization_memberships, membership_roles,
+-- roles, role_permissions, permissions.
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.regapro_current_user_id()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT auth.uid();
+$$;
+
+CREATE OR REPLACE FUNCTION public.regapro_is_org_member(p_org_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.organization_memberships om
+    WHERE om.org_id = p_org_id
+      AND om.user_id = auth.uid()
+      AND om.deleted_at IS NULL
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.regapro_has_permission(p_org_id uuid, p_permission text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.organization_memberships om
+    JOIN public.membership_roles mr ON mr.membership_id = om.id AND mr.deleted_at IS NULL
+    JOIN public.roles r ON r.id = mr.role_id AND r.deleted_at IS NULL
+    JOIN public.role_permissions rp ON rp.role_id = r.id AND rp.deleted_at IS NULL
+    JOIN public.permissions p ON p.id = rp.permission_id AND p.deleted_at IS NULL
+    WHERE om.org_id = p_org_id
+      AND om.user_id = auth.uid()
+      AND om.deleted_at IS NULL
+      AND p.key = p_permission
+  );
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Seed permissions & global roles
 -- ---------------------------------------------------------------------------
 
@@ -708,28 +710,13 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_feedback ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.file_objects ENABLE ROW LEVEL SECURITY;
 
--- Generic org-scoped policies (SELECT for members, writes require permission where noted)
+-- Non-labeled resources: org-member SELECT is OK (no confidentiality/visibility columns).
+-- Labeled resources (chat/tasks/artifacts/research/knowledge/files/memory/prompts/tools
+-- and their children) stay default-deny until confidentiality policies in
+-- 20260806120000_confidentiality_model.sql.
+
 CREATE POLICY org_member_select ON public.projects
   FOR SELECT USING (public.regapro_is_org_member(org_id));
-
-CREATE POLICY org_member_select_tasks ON public.tasks
-  FOR SELECT USING (public.regapro_is_org_member(org_id));
-
-CREATE POLICY task_manage ON public.tasks
-  FOR ALL USING (public.regapro_has_permission(org_id, 'task:manage'))
-  WITH CHECK (public.regapro_has_permission(org_id, 'task:manage'));
-
-CREATE POLICY org_member_select_knowledge ON public.knowledge_documents
-  FOR SELECT USING (public.regapro_is_org_member(org_id));
-
-CREATE POLICY knowledge_write ON public.knowledge_documents
-  FOR INSERT WITH CHECK (public.regapro_has_permission(org_id, 'knowledge:write'));
-
-CREATE POLICY org_member_select_research ON public.research_runs
-  FOR SELECT USING (public.regapro_is_org_member(org_id));
-
-CREATE POLICY research_run ON public.research_runs
-  FOR INSERT WITH CHECK (public.regapro_has_permission(org_id, 'research:run'));
 
 CREATE POLICY own_profile ON public.profiles
   FOR ALL USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
@@ -744,8 +731,9 @@ CREATE POLICY audit_read ON public.audit_logs
   FOR SELECT USING (public.regapro_has_permission(org_id, 'audit:read'));
 
 -- ---------------------------------------------------------------------------
--- Storage buckets (private) + policies
--- Buckets: knowledge-files, chat-attachments, artifacts, research-snapshots, user-avatars
+-- Storage buckets (private) + avatar policies
+-- Org-bucket object policies are confidentiality-aware and defined in
+-- 20260806120000_confidentiality_model.sql (via public.file_objects).
 -- Path convention: org/{org_id}/...
 -- ---------------------------------------------------------------------------
 
@@ -757,38 +745,6 @@ INSERT INTO storage.buckets (id, name, public) VALUES
   ('user-avatars', 'user-avatars', false)
 ON CONFLICT (id) DO NOTHING;
 
-CREATE POLICY storage_org_read ON storage.objects
-  FOR SELECT
-  USING (
-    bucket_id IN ('knowledge-files', 'chat-attachments', 'artifacts', 'research-snapshots')
-    AND public.regapro_is_org_member((split_part(name, '/', 2))::uuid)
-  );
-
-CREATE POLICY storage_org_insert ON storage.objects
-  FOR INSERT
-  WITH CHECK (
-    bucket_id IN ('knowledge-files', 'chat-attachments', 'artifacts', 'research-snapshots')
-    AND public.regapro_is_org_member((split_part(name, '/', 2))::uuid)
-  );
-
-CREATE POLICY storage_org_update ON storage.objects
-  FOR UPDATE
-  USING (
-    bucket_id IN ('knowledge-files', 'chat-attachments', 'artifacts', 'research-snapshots')
-    AND public.regapro_is_org_member((split_part(name, '/', 2))::uuid)
-  )
-  WITH CHECK (
-    bucket_id IN ('knowledge-files', 'chat-attachments', 'artifacts', 'research-snapshots')
-    AND public.regapro_is_org_member((split_part(name, '/', 2))::uuid)
-  );
-
-CREATE POLICY storage_org_delete ON storage.objects
-  FOR DELETE
-  USING (
-    bucket_id IN ('knowledge-files', 'chat-attachments', 'artifacts', 'research-snapshots')
-    AND public.regapro_is_org_member((split_part(name, '/', 2))::uuid)
-  );
-
 CREATE POLICY storage_avatar_read ON storage.objects
   FOR SELECT
   USING (bucket_id = 'user-avatars');
@@ -799,7 +755,7 @@ CREATE POLICY storage_avatar_own_write ON storage.objects
   WITH CHECK (bucket_id = 'user-avatars' AND auth.uid()::text = split_part(name, '/', 1));
 
 -- ---------------------------------------------------------------------------
--- Additional RLS policies for org-scoped business tables
+-- Org / membership / RBAC policies (not confidentiality-labeled)
 -- ---------------------------------------------------------------------------
 
 CREATE POLICY org_member_select ON public.organizations
@@ -830,59 +786,6 @@ CREATE POLICY org_member_select ON public.project_members
     )
   );
 
-CREATE POLICY org_member_select ON public.chat_threads
-  FOR SELECT USING (public.regapro_is_org_member(org_id));
-
-CREATE POLICY org_member_select ON public.chat_participants
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.chat_threads t
-      WHERE t.id = thread_id AND public.regapro_is_org_member(t.org_id)
-    )
-  );
-
-CREATE POLICY org_member_select ON public.chat_messages
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.chat_threads t
-      WHERE t.id = thread_id AND public.regapro_is_org_member(t.org_id)
-    )
-  );
-
-CREATE POLICY org_member_select ON public.message_citations
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.chat_messages m
-      JOIN public.chat_threads t ON t.id = m.thread_id
-      WHERE m.id = message_id AND public.regapro_is_org_member(t.org_id)
-    )
-  );
-
-CREATE POLICY org_member_select ON public.message_attachments
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.chat_messages m
-      JOIN public.chat_threads t ON t.id = m.thread_id
-      WHERE m.id = message_id AND public.regapro_is_org_member(t.org_id)
-    )
-  );
-
-CREATE POLICY org_member_select ON public.task_reminders
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.tasks tk
-      WHERE tk.id = task_id AND public.regapro_is_org_member(tk.org_id)
-    )
-  );
-
-CREATE POLICY org_member_select ON public.task_events
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.tasks tk
-      WHERE tk.id = task_id AND public.regapro_is_org_member(tk.org_id)
-    )
-  );
-
 CREATE POLICY org_member_select ON public.notification_deliveries
   FOR SELECT USING (
     EXISTS (
@@ -891,113 +794,13 @@ CREATE POLICY org_member_select ON public.notification_deliveries
     )
   );
 
-CREATE POLICY org_member_select ON public.memory_items
-  FOR SELECT USING (public.regapro_is_org_member(org_id));
-
-CREATE POLICY org_member_select ON public.knowledge_sources
-  FOR SELECT USING (public.regapro_is_org_member(org_id));
-
-CREATE POLICY org_member_select ON public.knowledge_document_versions
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.knowledge_documents d
-      WHERE d.id = document_id AND public.regapro_is_org_member(d.org_id)
-    )
-  );
-
-CREATE POLICY org_member_select ON public.knowledge_chunks
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.knowledge_document_versions v
-      JOIN public.knowledge_documents d ON d.id = v.document_id
-      WHERE v.id = document_version_id AND public.regapro_is_org_member(d.org_id)
-    )
-  );
-
-CREATE POLICY org_member_select ON public.knowledge_facts
-  FOR SELECT USING (public.regapro_is_org_member(org_id));
-
-CREATE POLICY org_member_select ON public.knowledge_revisions
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.knowledge_documents d
-      WHERE d.id = document_id AND public.regapro_is_org_member(d.org_id)
-    )
-  );
-
-CREATE POLICY org_member_select ON public.knowledge_approvals
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.knowledge_documents d
-      WHERE d.id = document_id AND public.regapro_is_org_member(d.org_id)
-    )
-  );
-
-CREATE POLICY org_member_select ON public.research_queries
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.research_runs r
-      WHERE r.id = run_id AND public.regapro_is_org_member(r.org_id)
-    )
-  );
-
-CREATE POLICY org_member_select ON public.research_sources
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.research_runs r
-      WHERE r.id = run_id AND public.regapro_is_org_member(r.org_id)
-    )
-  );
-
-CREATE POLICY org_member_select ON public.research_findings
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.research_runs r
-      WHERE r.id = run_id AND public.regapro_is_org_member(r.org_id)
-    )
-  );
-
-CREATE POLICY org_member_select ON public.research_jobs
-  FOR SELECT USING (public.regapro_is_org_member(org_id));
-
 CREATE POLICY org_member_select ON public.prompt_profiles
-  FOR SELECT USING (public.regapro_is_org_member(org_id));
-
-CREATE POLICY org_member_select ON public.generated_prompts
-  FOR SELECT USING (public.regapro_is_org_member(org_id));
-
-CREATE POLICY org_member_select ON public.prompt_execution_results
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.generated_prompts gp
-      WHERE gp.id = prompt_id AND public.regapro_is_org_member(gp.org_id)
-    )
-  );
-
-CREATE POLICY org_member_select ON public.artifacts
-  FOR SELECT USING (public.regapro_is_org_member(org_id));
-
-CREATE POLICY org_member_select ON public.artifact_versions
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.artifacts a
-      WHERE a.id = artifact_id AND public.regapro_is_org_member(a.org_id)
-    )
-  );
-
-CREATE POLICY org_member_select ON public.artifact_jobs
   FOR SELECT USING (public.regapro_is_org_member(org_id));
 
 CREATE POLICY org_member_select ON public.citations
   FOR SELECT USING (public.regapro_is_org_member(org_id));
 
-CREATE POLICY org_member_select ON public.tool_executions
-  FOR SELECT USING (public.regapro_is_org_member(org_id));
-
 CREATE POLICY org_member_select ON public.user_feedback
-  FOR SELECT USING (public.regapro_is_org_member(org_id));
-
-CREATE POLICY org_member_select ON public.file_objects
   FOR SELECT USING (public.regapro_is_org_member(org_id));
 
 CREATE POLICY org_member_select ON public.roles

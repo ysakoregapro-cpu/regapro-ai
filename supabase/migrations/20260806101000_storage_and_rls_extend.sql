@@ -1,5 +1,10 @@
 -- Storage buckets + extended RLS policies
 -- Do not apply to remote without human review.
+--
+-- Note: SELECT/write policies for confidentiality-labeled resources
+-- (chat, tasks, artifacts, research, knowledge, files, prompts, memory, tools)
+-- are intentionally deferred to 20260806120000_confidentiality_model.sql so the
+-- final policy set has no permissive-OR bypass via org-member-only SELECT.
 
 -- ---------------------------------------------------------------------------
 -- Additional RLS helpers
@@ -67,7 +72,8 @@ SET search_path = public
 AS $$
   SELECT CASE p_visibility
     WHEN 'private' THEN p_owner_user_id = auth.uid()
-    WHEN 'team' THEN public.regapro_is_org_member(p_org_id)
+    WHEN 'participants' THEN p_owner_user_id = auth.uid()
+    WHEN 'team' THEN public.regapro_is_org_member(p_org_id) -- legacy alias; prefer participants
     WHEN 'department' THEN EXISTS (
       SELECT 1 FROM public.organization_memberships om
       WHERE om.org_id = p_org_id
@@ -77,6 +83,7 @@ AS $$
     )
     WHEN 'project' THEN p_project_id IS NOT NULL AND public.regapro_is_project_member(p_project_id)
     WHEN 'organization' THEN public.regapro_is_org_member(p_org_id)
+    WHEN 'restricted' THEN p_owner_user_id = auth.uid()
     ELSE false
   END;
 $$;
@@ -97,7 +104,8 @@ AS $$
 $$;
 
 -- ---------------------------------------------------------------------------
--- Extended table policies (authenticated explicit)
+-- Non-labeled resource write policies (projects + invitations + memberships)
+-- Labeled-resource CRUD is created only in confidentiality_model migration.
 -- ---------------------------------------------------------------------------
 
 CREATE POLICY projects_insert ON public.projects
@@ -108,75 +116,6 @@ CREATE POLICY projects_update ON public.projects
   FOR UPDATE TO authenticated
   USING (public.regapro_has_permission(org_id, 'project:manage'))
   WITH CHECK (public.regapro_has_permission(org_id, 'project:manage'));
-
-CREATE POLICY tasks_insert ON public.tasks
-  FOR INSERT TO authenticated
-  WITH CHECK (public.regapro_has_permission(org_id, 'task:create'));
-
-CREATE POLICY tasks_update ON public.tasks
-  FOR UPDATE TO authenticated
-  USING (
-    public.regapro_has_permission(org_id, 'task:update')
-    OR assignee_id = auth.uid()
-    OR created_by = auth.uid()
-  )
-  WITH CHECK (
-    public.regapro_has_permission(org_id, 'task:update')
-    OR assignee_id = auth.uid()
-    OR created_by = auth.uid()
-  );
-
-CREATE POLICY chat_threads_select ON public.chat_threads
-  FOR SELECT TO authenticated
-  USING (public.regapro_is_org_member(org_id) AND deleted_at IS NULL);
-
-CREATE POLICY chat_threads_insert ON public.chat_threads
-  FOR INSERT TO authenticated
-  WITH CHECK (public.regapro_has_permission(org_id, 'chat:use'));
-
-CREATE POLICY chat_messages_select ON public.chat_messages
-  FOR SELECT TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.chat_threads t
-      WHERE t.id = thread_id
-        AND public.regapro_is_org_member(t.org_id)
-        AND t.deleted_at IS NULL
-    )
-  );
-
-CREATE POLICY artifacts_select ON public.artifacts
-  FOR SELECT TO authenticated
-  USING (public.regapro_is_org_member(org_id) AND deleted_at IS NULL);
-
-CREATE POLICY artifacts_insert ON public.artifacts
-  FOR INSERT TO authenticated
-  WITH CHECK (public.regapro_has_permission(org_id, 'artifact:generate'));
-
-CREATE POLICY prompts_select ON public.generated_prompts
-  FOR SELECT TO authenticated
-  USING (public.regapro_is_org_member(org_id) AND deleted_at IS NULL);
-
-CREATE POLICY prompts_insert ON public.generated_prompts
-  FOR INSERT TO authenticated
-  WITH CHECK (public.regapro_has_permission(org_id, 'prompt:generate'));
-
-CREATE POLICY knowledge_update ON public.knowledge_documents
-  FOR UPDATE TO authenticated
-  USING (
-    public.regapro_has_permission(org_id, 'knowledge:write')
-    OR public.regapro_has_permission(org_id, 'knowledge:review')
-    OR public.regapro_has_permission(org_id, 'knowledge:approve')
-  )
-  WITH CHECK (
-    public.regapro_has_permission(org_id, 'knowledge:write')
-    OR public.regapro_has_permission(org_id, 'knowledge:review')
-    OR public.regapro_has_permission(org_id, 'knowledge:approve')
-  );
-
-CREATE POLICY file_objects_select ON public.file_objects
-  FOR SELECT TO authenticated
-  USING (public.regapro_is_org_member(org_id) AND deleted_at IS NULL);
 
 CREATE POLICY memberships_select ON public.organization_memberships
   FOR SELECT TO authenticated
