@@ -264,6 +264,13 @@ ON CONFLICT DO NOTHING;
 -- RLS helpers (DB is source of truth; JWT claims are advisory only)
 -- ---------------------------------------------------------------------------
 
+-- Drop leftover smallint overloads if a prior failed apply left them behind.
+-- Fresh signatures use integer for level args (see CREATE comments below).
+DROP FUNCTION IF EXISTS public.regapro_can_assign_confidentiality_level(uuid, smallint);
+DROP FUNCTION IF EXISTS public.regapro_can_access_confidentiality_level(uuid, smallint);
+DROP FUNCTION IF EXISTS public.regapro_can_access_resource(uuid, smallint, text, uuid, uuid, uuid);
+DROP FUNCTION IF EXISTS public.regapro_can_access_labeled_row(uuid, smallint, text, uuid, uuid, uuid, uuid);
+
 CREATE OR REPLACE FUNCTION public.regapro_level_to_int(p_level text)
 RETURNS smallint
 LANGUAGE sql
@@ -297,9 +304,11 @@ AS $$
   LIMIT 1;
 $$;
 
+-- Level args use integer (not smallint) so SQL integer literals and smallint
+-- columns both resolve. PostgreSQL will not match integer → smallint for functions.
 CREATE OR REPLACE FUNCTION public.regapro_can_assign_confidentiality_level(
   p_org_id uuid,
-  p_requested_level smallint
+  p_requested_level integer
 )
 RETURNS boolean
 LANGUAGE sql
@@ -313,7 +322,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.regapro_can_access_confidentiality_level(
   p_org_id uuid,
-  p_resource_level smallint
+  p_resource_level integer
 )
 RETURNS boolean
 LANGUAGE sql
@@ -365,7 +374,7 @@ $$;
 -- collapses to owner-only; prefer origin_thread_id path for conversation-derived rows.
 CREATE OR REPLACE FUNCTION public.regapro_can_access_resource(
   p_org_id uuid,
-  p_confidentiality_level smallint,
+  p_confidentiality_level integer,
   p_visibility text,
   p_owner_user_id uuid,
   p_department_id uuid,
@@ -439,7 +448,7 @@ $$;
 -- Derived / labeled rows: prefer parent-thread gate; else standalone labels.
 CREATE OR REPLACE FUNCTION public.regapro_can_access_labeled_row(
   p_org_id uuid,
-  p_confidentiality_level smallint,
+  p_confidentiality_level integer,
   p_visibility text,
   p_owner_user_id uuid,
   p_department_id uuid,
@@ -502,23 +511,23 @@ AS $$
 $$;
 
 REVOKE ALL ON FUNCTION public.regapro_effective_clearance_level(uuid) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.regapro_can_assign_confidentiality_level(uuid, smallint) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.regapro_can_access_confidentiality_level(uuid, smallint) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.regapro_can_assign_confidentiality_level(uuid, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.regapro_can_access_confidentiality_level(uuid, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.regapro_can_read_private_thread(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.regapro_has_conversation_audit_access(uuid) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.regapro_can_access_resource(uuid, smallint, text, uuid, uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.regapro_can_access_resource(uuid, integer, text, uuid, uuid, uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.regapro_can_access_thread(uuid) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.regapro_can_access_labeled_row(uuid, smallint, text, uuid, uuid, uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.regapro_can_access_labeled_row(uuid, integer, text, uuid, uuid, uuid, uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.regapro_can_access_storage_object(text, text) FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION public.regapro_effective_clearance_level(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.regapro_can_assign_confidentiality_level(uuid, smallint) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.regapro_can_access_confidentiality_level(uuid, smallint) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.regapro_can_assign_confidentiality_level(uuid, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.regapro_can_access_confidentiality_level(uuid, integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.regapro_can_read_private_thread(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.regapro_has_conversation_audit_access(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.regapro_can_access_resource(uuid, smallint, text, uuid, uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.regapro_can_access_resource(uuid, integer, text, uuid, uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.regapro_can_access_thread(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.regapro_can_access_labeled_row(uuid, smallint, text, uuid, uuid, uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.regapro_can_access_labeled_row(uuid, integer, text, uuid, uuid, uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.regapro_can_access_storage_object(text, text) TO authenticated;
 
 -- ---------------------------------------------------------------------------
