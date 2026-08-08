@@ -9,14 +9,18 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace=@regapro/web",
-    "build": "npm run build --workspaces --if-present",
-    "build:packages": "npm run build --workspace=@regapro/shared --workspace=@regapro/database --workspace=@regapro/security --workspace=@regapro/knowledge --workspace=@regapro/research --workspace=@regapro/tasks --workspace=@regapro/notifications --workspace=@regapro/local-ai --workspace=@regapro/prompting --workspace=@regapro/artifacts --workspace=@regapro/observability --workspace=@regapro/ui --workspace=@regapro/research-worker --workspace=@regapro/artifact-worker --workspace=@regapro/notification-worker",
+    "clean": "node scripts/clean-build-artifacts.mjs",
+    "build:packages": "tsc -b tsconfig.build.json",
+    "build": "npm run build:packages && npm run build --workspace=@regapro/web",
     "lint": "npm run lint --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
     "test": "npm run build:packages && npm run test --workspaces --if-present",
     "check": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "engines": {
     "node": ">=24.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5"
   }
 }

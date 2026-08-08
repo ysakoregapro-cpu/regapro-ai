@@ -1,0 +1,20 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/database" },
+    { "path": "./packages/security" },
+    { "path": "./packages/knowledge" },
+    { "path": "./packages/research" },
+    { "path": "./packages/tasks" },
+    { "path": "./packages/notifications" },
+    { "path": "./packages/local-ai" },
+    { "path": "./packages/prompting" },
+    { "path": "./packages/artifacts" },
+    { "path": "./packages/observability" },
+    { "path": "./packages/ui" },
+    { "path": "./services/research-worker" },
+    { "path": "./services/artifact-worker" },
+    { "path": "./services/notification-worker" }
+  ]
+}
