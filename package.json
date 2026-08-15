@@ -15,7 +15,12 @@
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
     "test": "npm run build:packages && npm run test --workspaces --if-present",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run build"
+    "check": "npm run typecheck && npm run lint && npm run test && npm run build",
+    "db:gen-types": "node scripts/gen-supabase-types.mjs",
+    "db:bootstrap-org": "node scripts/bootstrap-regapro-org.mjs",
+    "db:verify-live": "node scripts/verify-live-connection.mjs",
+    "db:test-rls": "node scripts/rls-integration/run.mjs",
+    "smoke:supabase-mode": "node scripts/smoke-supabase-mode.mjs"
   },
   "engines": {
     "node": ">=24.0.0"

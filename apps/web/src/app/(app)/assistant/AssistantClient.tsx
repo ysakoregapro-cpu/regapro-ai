@@ -27,11 +27,10 @@ import {
 import { listTasks, projectName } from "@/lib/application/catalog-service";
 import { interpretTaskUtterance } from "@/lib/application/task-interpreter";
 import { cn } from "@/lib/cn";
-import { SAMPLE_DOCUMENTS } from "@/lib/data/dev-sample/catalog";
-import { resolveSessionAccess } from "@/lib/data/dev-sample/memberships";
+import { isDevSampleMode } from "@/lib/supabase/env";
 import { ASSISTANT_TOOLS } from "@/lib/navigation";
 import type { ConfidentialityLevel } from "@regapro/shared";
-import { CONFIDENTIALITY_LABELS } from "@regapro/shared";
+import { CONFIDENTIALITY_LABELS, selectableLevelsForClearance } from "@regapro/shared";
 
 type LocalMessage = {
   id: string;
@@ -69,12 +68,39 @@ function toLocalMessages(
 export default function AssistantPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const session = useMemo(() => resolveSessionAccess(), []);
+  const [selectableLevels, setSelectableLevels] = useState<ConfidentialityLevel[]>(
+    () => (isDevSampleMode() ? selectableLevelsForClearance("people") : ["company"]),
+  );
   const initialThread = params.get("thread");
   const initialQuery = params.get("q") ?? "";
   const started = params.get("started") === "1";
   const initialTool = params.get("tool");
   const wantFocus = params.get("focus") === "1";
+
+  useEffect(() => {
+    if (isDevSampleMode()) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/session");
+        const json = (await res.json()) as {
+          membership?: { selectableLevels?: ConfidentialityLevel[] } | null;
+        };
+        if (
+          !cancelled &&
+          json.membership?.selectableLevels &&
+          json.membership.selectableLevels.length > 0
+        ) {
+          setSelectableLevels(json.membership.selectableLevels);
+        }
+      } catch {
+        /* keep default */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [threads, setThreads] = useState<ThreadListItem[]>([]);
   const [threadId, setThreadId] = useState<string | null>(initialThread);
@@ -301,15 +327,11 @@ export default function AssistantPage() {
         }))
       : (lastAssistant?.citations ?? []);
   const relatedTasks = useMemo(() => {
-    if (!threadProjectId) return [];
+    if (!threadProjectId || !isDevSampleMode()) return [];
     return listTasks("all").filter((t) => t.projectId === threadProjectId).slice(0, 5);
   }, [threadProjectId]);
   const relatedArtifacts =
-    threadArtifacts.length > 0
-      ? threadArtifacts
-      : threadProjectId
-        ? SAMPLE_DOCUMENTS.filter((d) => d.projectId === threadProjectId)
-        : [];
+    threadArtifacts.length > 0 ? threadArtifacts : [];
 
   const toggleTool = (id: string) => {
     setActiveTools((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -496,8 +518,8 @@ export default function AssistantPage() {
             <InformationLevelSelector
               className="self-end sm:self-start"
               value={threadLevel}
-              selectableLevels={session.selectableLevels}
-              locked={session.selectableLevels.length <= 1}
+              selectableLevels={selectableLevels}
+              locked={selectableLevels.length <= 1}
               onChange={async (level) => {
                 if (!threadId) {
                   setThreadLevel(level);
@@ -638,22 +660,24 @@ export default function AssistantPage() {
           onFileSelected={(file) => {
             if (!file) return;
             void (async () => {
+              const form = new FormData();
+              form.append("file", file);
+              if (threadId) form.append("threadId", threadId);
+              if (!threadId) form.append("createThread", "true");
+              form.append("idempotencyKey", globalThis.crypto.randomUUID());
               const res = await fetch("/api/files", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  threadId: threadId ?? undefined,
-                  createThread: !threadId,
-                  name: file.name,
-                  mimeType: file.type || "application/octet-stream",
-                  sizeBytes: file.size,
-                }),
+                body: form,
               });
               const data = (await res.json()) as {
                 ok: boolean;
                 redirectTo?: string | null;
                 threadId?: string;
-                file?: { ephemeralNotice?: string | null };
+                file?: {
+                  id?: string;
+                  ephemeralNotice?: string | null;
+                  durable?: boolean;
+                };
                 message?: string;
               };
               if (!data.ok) {
@@ -670,13 +694,21 @@ export default function AssistantPage() {
               }
               setToast(
                 data.file?.ephemeralNotice ??
-                  "ファイルを追加しました（本文の自動解析は行っていません）",
+                  (data.file?.durable
+                    ? "ファイルを保存しました"
+                    : "ファイルを追加しました"),
               );
             })();
           }}
         />
       </section>
 
+      {/*
+        TODO(responsive): On mid-width desktop, the main chat column can get too narrow.
+        Make the right 「引用 / タスク / 成果物」 pane collapsible (or auto-hide) below a
+        certain viewport width so the conversation area stays usable. Do not widen the
+        app sidebar for brand text alone.
+      */}
       {/* Right pane */}
       <aside className="hidden w-[var(--right-pane-width)] shrink-0 flex-col border-l border-border lg:flex">
         <div className="flex shrink-0 gap-1 border-b border-border px-2 py-2">

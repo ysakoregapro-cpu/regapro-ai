@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createDerivedResource } from "@/lib/application/chat-service";
+import { createDerivedResourceAsync } from "@/lib/application/data-gateway";
+import { catchToJson } from "@/lib/application/api-errors";
 
 const BodySchema = z.object({
   threadId: z.string().min(1),
@@ -16,18 +17,15 @@ const BodySchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const json = await request.json().catch(() => null);
-  const parsed = BodySchema.safeParse(json);
-  if (!parsed.success) {
-    return NextResponse.json({ ok: false, message: "入力が不正です" }, { status: 400 });
-  }
   try {
-    const resource = createDerivedResource(parsed.data);
+    const json = await request.json().catch(() => null);
+    const parsed = BodySchema.safeParse(json);
+    if (!parsed.success) {
+      return NextResponse.json({ ok: false, message: "入力が不正です" }, { status: 400 });
+    }
+    const resource = await createDerivedResourceAsync(parsed.data);
     return NextResponse.json({ ok: true, resource });
-  } catch {
-    return NextResponse.json(
-      { ok: false, message: "作成できませんでした" },
-      { status: 404 },
-    );
+  } catch (err) {
+    return catchToJson(err);
   }
 }

@@ -5,14 +5,17 @@ const dataModeSchema = z.enum(["dev-sample", "supabase"]);
 export type RegaproDataMode = z.infer<typeof dataModeSchema>;
 
 export function getDataMode(): RegaproDataMode {
-  const raw = process.env.REGAPRO_DATA_MODE;
+  // Client components may read NEXT_PUBLIC_*; server prefers REGAPRO_DATA_MODE.
+  const raw =
+    process.env.REGAPRO_DATA_MODE ||
+    process.env.NEXT_PUBLIC_REGAPRO_DATA_MODE;
   if (raw === undefined || raw === "") {
     return "dev-sample";
   }
   const parsed = dataModeSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(
-      `Invalid REGAPRO_DATA_MODE="${raw}". Expected "dev-sample" or "supabase".`
+      `Invalid REGAPRO_DATA_MODE="${raw}". Expected "dev-sample" or "supabase".`,
     );
   }
   return parsed.data;
@@ -31,17 +34,32 @@ const publicEnvSchema = z.object({
   publishableKey: z.string().min(1),
 });
 
+/** Prefer publishable key; accept legacy anon key name for ops docs compatibility. */
+function resolvePublishableKey(): string | undefined {
+  return (
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
+}
+
+/** Prefer secret key; accept legacy service_role name for ops docs compatibility. */
+function resolveSecretKey(): string | undefined {
+  return process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+}
+
 export function getSupabasePublicEnv() {
   return publicEnvSchema.parse({
     url: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    publishableKey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    publishableKey: resolvePublishableKey(),
   });
 }
 
 export function getSupabaseSecretKey(): string {
-  const key = process.env.SUPABASE_SECRET_KEY;
+  const key = resolveSecretKey();
   if (!key) {
-    throw new Error("SUPABASE_SECRET_KEY is not configured (server-only).");
+    throw new Error(
+      "SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) is not configured (server-only).",
+    );
   }
   return key;
 }
@@ -49,6 +67,16 @@ export function getSupabaseSecretKey(): string {
 export function hasSupabasePublicConfig(): boolean {
   try {
     getSupabasePublicEnv();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function hasSupabaseAdminConfig(): boolean {
+  try {
+    getSupabasePublicEnv();
+    getSupabaseSecretKey();
     return true;
   } catch {
     return false;

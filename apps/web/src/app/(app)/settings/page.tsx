@@ -1,61 +1,48 @@
-import { CURRENT_MEMBERSHIP } from "@/lib/data/dev-sample/memberships";
-import { PageHeader, ConnectionStatus } from "@/components/ui/primitives";
+import { PageHeader } from "@/components/ui/primitives";
+import { resolveAppSession } from "@/lib/application/session-access";
+import { isDevSampleMode } from "@/lib/supabase/env";
+import { CONFIDENTIALITY_LABELS } from "@regapro/shared";
 
 export const metadata = { title: "設定" };
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const session = await resolveAppSession();
+  const sample = isDevSampleMode();
+
   return (
-    <div className="space-y-6">
-      <PageHeader title="設定" />
-      <section>
-        <h2 className="mb-2 text-[16px] font-semibold">プロフィール</h2>
-        <dl className="space-y-2 text-[13px]">
-          <div className="flex justify-between border-b border-border py-2">
-            <dt className="text-text-secondary">氏名</dt>
-            <dd>{CURRENT_MEMBERSHIP.name}</dd>
-          </div>
-          <div className="flex justify-between border-b border-border py-2">
-            <dt className="text-text-secondary">部署</dt>
-            <dd>{CURRENT_MEMBERSHIP.departmentLabel}</dd>
-          </div>
-          <div className="flex justify-between border-b border-border py-2">
-            <dt className="text-text-secondary">役職</dt>
-            <dd>{CURRENT_MEMBERSHIP.title}</dd>
-          </div>
-          <div className="flex justify-between border-b border-border py-2">
-            <dt className="text-text-secondary">メール</dt>
-            <dd>{CURRENT_MEMBERSHIP.email}</dd>
-          </div>
-        </dl>
-      </section>
-      <section>
-        <h2 className="mb-2 text-[16px] font-semibold">タスク</h2>
-        <label className="flex items-start gap-2 text-[13px]">
-          <input type="checkbox" className="mt-1" disabled />
-          <span>
-            高確信度のタスクを確認なしで自動登録する
-            <span className="mt-0.5 block text-[12px] text-text-secondary">
-              初期値はオフです。明示的に有効化した場合のみ動作します。
-            </span>
-          </span>
-        </label>
-      </section>
-      <section>
-        <h2 className="mb-2 text-[16px] font-semibold">通知</h2>
-        <p className="text-[13px] text-text-secondary">
-          期限前日 09:00（Asia/Tokyo）。Push非対応時はアプリ内通知。
-        </p>
-      </section>
-      <section>
-        <h2 className="mb-2 text-[16px] font-semibold">外観</h2>
-        <p className="text-[13px] text-text-secondary">
-          ライトを初期値とし、システム設定に応じてダークにも対応します。
-        </p>
-      </section>
-      <section>
-        <h2 className="mb-2 text-[16px] font-semibold">接続</h2>
-        <ConnectionStatus label="Google Workspace" connected={false} reason="認証情報未設定" />
-      </section>
+    <div className="mx-auto max-w-2xl space-y-8">
+      <PageHeader
+        title="設定"
+        description={
+          sample
+            ? "確認用の所属情報です"
+            : "組織メンバーシップに基づくプロフィールです"
+        }
+      />
+      <dl className="divide-y divide-border border-y border-border">
+        <div className="flex justify-between gap-4 py-3 text-[14px]">
+          <dt className="text-text-secondary">氏名</dt>
+          <dd>{session.membership.name}</dd>
+        </div>
+        <div className="flex justify-between gap-4 py-3 text-[14px]">
+          <dt className="text-text-secondary">部署</dt>
+          <dd>{session.membership.departmentLabel}</dd>
+        </div>
+        <div className="flex justify-between gap-4 py-3 text-[14px]">
+          <dt className="text-text-secondary">メール</dt>
+          <dd>{session.membership.email}</dd>
+        </div>
+        <div className="flex justify-between gap-4 py-3 text-[14px]">
+          <dt className="text-text-secondary">役割</dt>
+          <dd>{session.membership.role}</dd>
+        </div>
+        <div className="flex justify-between gap-4 py-3 text-[14px]">
+          <dt className="text-text-secondary">扱える情報区分</dt>
+          <dd>
+            {CONFIDENTIALITY_LABELS[session.maximumConfidentialityLevel]}
+          </dd>
+        </div>
+      </dl>
     </div>
   );
 }

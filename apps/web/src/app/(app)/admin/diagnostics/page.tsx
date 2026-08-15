@@ -1,8 +1,11 @@
 import { PageHeader, ConnectionStatus, StatusBadge } from "@/components/ui/primitives";
+import { getDataMode, isDevSampleMode } from "@/lib/supabase/env";
 
 export const metadata = { title: "診断情報" };
 
 export default function DiagnosticsPage() {
+  const mode = getDataMode();
+  const sample = isDevSampleMode();
   return (
     <div className="space-y-6">
       <PageHeader
@@ -13,8 +16,12 @@ export default function DiagnosticsPage() {
         <h2 className="text-[14px] font-semibold">接続状態</h2>
         <ConnectionStatus
           label="データモード"
-          connected
-          reason="dev-sample（確認用）"
+          connected={!sample}
+          reason={
+            sample
+              ? "dev-sample（確認用メモリ）"
+              : `supabase（REGAPRO_DATA_MODE=${mode}）`
+          }
         />
         <ConnectionStatus
           label="SearXNG"
@@ -37,37 +44,31 @@ export default function DiagnosticsPage() {
           reason="交換可能なProvider。標準経路外"
         />
         <ConnectionStatus
-          label="Google Workspace"
-          connected={false}
-          reason="認証情報がないため未接続"
+          label="成果物本文"
+          connected={!sample}
+          reason={
+            sample
+              ? "確認用メモリ"
+              : "artifact_versions.canonical_content（DB・永続）。PDF等の export は Storage（未実装）"
+          }
         />
         <ConnectionStatus
-          label="ブラウザ内モデル"
-          connected={false}
-          reason="初回ダウンロード未実施（アプリ本体は利用可能）"
-        />
-        <ConnectionStatus
-          label="プッシュ通知"
-          connected={false}
-          reason="配信基盤未接続。通知予定は保存可能"
+          label="ファイル本体 Storage"
+          connected={!sample}
+          reason={
+            sample
+              ? "確認用・再起動で失われる場合あり"
+              : "chat-attachments bucket + file_objects（認証済み JWT / RLS）"
+          }
         />
       </section>
-      <section>
-        <h2 className="mb-2 text-[14px] font-semibold">ジョブ・通知</h2>
-        <ul className="space-y-2 text-[13px]">
-          <li className="flex justify-between border-b border-border py-2">
-            <span>調査ジョブ</span>
-            <StatusBadge>待機 0 / 失敗 0</StatusBadge>
-          </li>
-          <li className="flex justify-between border-b border-border py-2">
-            <span>成果物ジョブ</span>
-            <StatusBadge>待機 0 / 失敗 0</StatusBadge>
-          </li>
-          <li className="flex justify-between border-b border-border py-2">
-            <span>通知配信</span>
-            <StatusBadge tone="warning">予定保存のみ</StatusBadge>
-          </li>
-        </ul>
+      <section className="space-y-2">
+        <h2 className="text-[14px] font-semibold">注意</h2>
+        <p className="text-[13px] text-text-secondary">
+          Research は確認用フローが含まれる場合があります。実検索済みと誤解しないでください。
+          成果物本文とチャット添付ファイルは durable 保存されます（Office 出力形式の生成は未接続）。
+        </p>
+        <StatusBadge tone="neutral">業務 OS 向け診断</StatusBadge>
       </section>
     </div>
   );

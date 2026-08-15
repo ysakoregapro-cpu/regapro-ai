@@ -4,8 +4,9 @@ import { getSupabasePublicEnv, getSupabaseSecretKey } from "./env";
 import type { Database } from "./types";
 
 /**
- * Server-only admin client. Never import from Client Components.
- * Limited to bootstrap, invitations, cron, and maintenance jobs.
+ * Server-only admin client (service role). Bypasses RLS.
+ * Never import from Client Components or expose to the browser bundle.
+ * Use only for bootstrap, invitations, workers, and maintenance.
  */
 export function createAdminClient() {
   const { url } = getSupabasePublicEnv();

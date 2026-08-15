@@ -157,3 +157,11 @@ export function getProviderForCapability(
   ];
   return providers.filter((p) => p.capabilities.includes(capability));
 }
+
+export * from "./embedding-manifest.js";
+export {
+  TransformersJsEmbeddingProvider,
+  resolveEmbeddingRuntimeMode,
+  type EmbeddingRuntimeMode,
+} from "./transformers-embedding.js";
+export { createEmbeddingProvider } from "./embedding-factory.js";

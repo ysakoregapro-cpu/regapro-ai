@@ -11,6 +11,7 @@ export type TaskDraft = {
 };
 
 import { SAMPLE_MEMBERSHIPS } from "@/lib/data/dev-sample/memberships";
+import { isDevSampleMode } from "@/lib/supabase/env";
 
 const ASSIGNEE_HINTS = SAMPLE_MEMBERSHIPS.map((m) => ({
   pattern: new RegExp(m.name.split(/\s+/)[0] ?? m.name),
@@ -36,19 +37,21 @@ export function interpretTaskUtterance(input: string, now = new Date()): TaskDra
   const notifyDayBefore = /前日|通知/.test(raw);
   let description = "";
 
-  for (const a of ASSIGNEE_HINTS) {
-    if (a.pattern.test(raw)) {
-      assigneeHint = a.name;
-      confidence += 0.12;
-      break;
+  if (isDevSampleMode()) {
+    for (const a of ASSIGNEE_HINTS) {
+      if (a.pattern.test(raw)) {
+        assigneeHint = a.name;
+        confidence += 0.12;
+        break;
+      }
     }
-  }
 
-  for (const p of PROJECT_HINTS) {
-    if (p.pattern.test(raw)) {
-      projectHint = p.name;
-      confidence += 0.08;
-      break;
+    for (const p of PROJECT_HINTS) {
+      if (p.pattern.test(raw)) {
+        projectHint = p.name;
+        confidence += 0.08;
+        break;
+      }
     }
   }
 

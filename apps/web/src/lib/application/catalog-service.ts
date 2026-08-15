@@ -11,8 +11,8 @@ import {
   SAMPLE_TASKS,
   SAMPLE_THREADS,
   type SampleTask,
-  projectName,
-  userName,
+  projectName as sampleProjectName,
+  userName as sampleUserName,
 } from "@/lib/data/dev-sample/catalog";
 import { CURRENT_MEMBERSHIP } from "@/lib/data/dev-sample/memberships";
 import { isDevSampleMode } from "@/lib/supabase/env";
@@ -27,65 +27,83 @@ export type HomeDashboard = {
   dueSoonTasks: SampleTask[];
   needsAttention: { id: string; title: string; reason: string }[];
   continueWork: { id: string; title: string; href: string }[];
-  recentThreads: typeof SAMPLE_THREADS;
-  recentDocuments: typeof SAMPLE_DOCUMENTS;
-  frequentProjects: typeof SAMPLE_PROJECTS;
-  recentActivity: typeof SAMPLE_ACTIVITY;
+  recentThreads: { id: string; title: string; preview: string }[];
+  recentDocuments: { id: string; title: string; kind: string }[];
+  frequentProjects: { id: string; name: string; description: string }[];
+  recentActivity: { id: string; label: string; at: string }[];
+  mode: "dev-sample" | "supabase";
 };
 
-function assertDevOrThrow() {
-  // In supabase mode these services will be swapped to repository-backed ones.
-  // For now, application entrypoints still gate on mode explicitly.
-  void isDevSampleMode;
+function emptyHome(greetingName: string): HomeDashboard {
+  return {
+    greetingName,
+    todayTasks: [],
+    dueSoonTasks: [],
+    needsAttention: [],
+    continueWork: [],
+    recentThreads: [],
+    recentDocuments: [],
+    frequentProjects: [],
+    recentActivity: [],
+    mode: "supabase",
+  };
 }
 
+/**
+ * Sync catalog for client components.
+ * In supabase mode returns empty collections (never fixture IDs).
+ */
 export function getHomeDashboard(): HomeDashboard {
-  assertDevOrThrow();
+  if (!isDevSampleMode()) {
+    return emptyHome("利用者");
+  }
   const today = SAMPLE_TASKS.filter(
-    (t) => t.status !== "done" && t.status !== "cancelled" && t.dueAt.startsWith("2026-08-06")
+    (t) => t.status !== "done" && t.status !== "cancelled" && t.dueAt.startsWith("2026-08-06"),
   );
   const dueSoon = SAMPLE_TASKS.filter(
     (t) =>
       t.status !== "done" &&
       t.status !== "cancelled" &&
-      (t.dueAt.startsWith("2026-08-07") || t.dueAt.startsWith("2026-08-08"))
+      (t.dueAt.startsWith("2026-08-07") || t.dueAt.startsWith("2026-08-08")),
   );
   return {
     greetingName: CURRENT_MEMBERSHIP.name,
     todayTasks: today.length ? today : SAMPLE_TASKS.filter((t) => t.status === "todo").slice(0, 2),
     dueSoonTasks: dueSoon,
     needsAttention: [
-      {
-        id: "attn-1",
-        title: "代表確認が必要な採用条件案を整理",
-        reason: "優先度：至急",
-      },
-      {
-        id: "attn-2",
-        title: "ナレッジ承認待ち",
-        reason: "確認が必要",
-      },
+      { id: "attn-1", title: "代表確認が必要な採用条件案を整理", reason: "優先度：至急" },
+      { id: "attn-2", title: "ナレッジ承認待ち", reason: "確認が必要" },
     ],
     continueWork: [
-      {
-        id: "cont-1",
-        title: "求人選定の状況整理",
-        href: "/assistant?thread=thread-1",
-      },
-      {
-        id: "cont-2",
-        title: "通信イベント運営資料の初稿レビュー",
-        href: "/tasks?task=task-2",
-      },
+      { id: "cont-1", title: "求人選定の状況整理", href: "/assistant?thread=thread-1" },
+      { id: "cont-2", title: "通信イベント運営資料の初稿レビュー", href: "/tasks?task=task-2" },
     ],
-    recentThreads: SAMPLE_THREADS,
-    recentDocuments: SAMPLE_DOCUMENTS,
-    frequentProjects: SAMPLE_PROJECTS,
-    recentActivity: SAMPLE_ACTIVITY,
+    recentThreads: SAMPLE_THREADS.map((th) => ({
+      id: th.id,
+      title: th.title,
+      preview: th.preview,
+    })),
+    recentDocuments: SAMPLE_DOCUMENTS.map((d) => ({
+      id: d.id,
+      title: d.title,
+      kind: d.kind,
+    })),
+    frequentProjects: SAMPLE_PROJECTS.map((p) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+    })),
+    recentActivity: SAMPLE_ACTIVITY.map((a) => ({
+      id: a.id,
+      label: a.label,
+      at: a.at,
+    })),
+    mode: "dev-sample",
   };
 }
 
 export function listTasks(filter: "today" | "upcoming" | "all" | "done" = "all") {
+  if (!isDevSampleMode()) return [];
   const open = SAMPLE_TASKS.filter((t) => t.status !== "done" && t.status !== "cancelled");
   if (filter === "today") {
     return open.filter((t) => t.dueAt.startsWith("2026-08-06") || t.priority === "urgent");
@@ -100,38 +118,47 @@ export function listTasks(filter: "today" | "upcoming" | "all" | "done" = "all")
 }
 
 export function getTask(id: string) {
+  if (!isDevSampleMode()) return null;
   return SAMPLE_TASKS.find((t) => t.id === id) ?? null;
 }
 
 export function listThreads() {
+  if (!isDevSampleMode()) return [];
   return SAMPLE_THREADS;
 }
 
 export function getThreadMessages(threadId: string) {
+  if (!isDevSampleMode()) return [];
   return SAMPLE_MESSAGES.filter((m) => m.threadId === threadId);
 }
 
 export function listKnowledge() {
+  if (!isDevSampleMode()) return [];
   return SAMPLE_KNOWLEDGE;
 }
 
 export function listResearch() {
+  if (!isDevSampleMode()) return [];
   return SAMPLE_RESEARCH;
 }
 
 export function listDocuments() {
+  if (!isDevSampleMode()) return [];
   return SAMPLE_DOCUMENTS;
 }
 
 export function listPrompts() {
+  if (!isDevSampleMode()) return [];
   return SAMPLE_PROMPTS;
 }
 
 export function listProjects() {
+  if (!isDevSampleMode()) return [];
   return SAMPLE_PROJECTS;
 }
 
 export function listNotifications() {
+  if (!isDevSampleMode()) return [];
   return SAMPLE_NOTIFICATIONS;
 }
 
@@ -146,6 +173,7 @@ export type SearchHit = {
 };
 
 export function searchAll(query: string): SearchHit[] {
+  if (!isDevSampleMode()) return [];
   const q = query.trim().toLowerCase();
   if (!q) return [];
 
@@ -164,7 +192,7 @@ export function searchAll(query: string): SearchHit[] {
         kind: "タスク",
         title: t.title,
         snippet: t.description,
-        project: projectName(t.projectId),
+        project: sampleProjectName(t.projectId),
         updatedAt: t.dueAt.slice(0, 10),
         source: "タスク",
       });
@@ -186,14 +214,13 @@ export function searchAll(query: string): SearchHit[] {
         kind: "ナレッジ",
         title: k.title,
         snippet: `${k.category} / ${k.business}`,
-        project: projectName(k.projectId),
+        project: sampleProjectName(k.projectId),
         updatedAt: k.updatedAt,
         source: "ナレッジ",
       });
     }
   }
 
-  // Private chats of others are excluded inside searchAccessible
   for (const h of searchAccessible(q, session.membership.userId)) {
     hits.push({
       id: h.id,
@@ -213,7 +240,7 @@ export function searchAll(query: string): SearchHit[] {
         kind: "ドキュメント",
         title: d.title,
         snippet: d.kind,
-        project: projectName(d.projectId),
+        project: sampleProjectName(d.projectId),
         updatedAt: d.updatedAt,
         source: "ドキュメント",
       });
@@ -226,7 +253,7 @@ export function searchAll(query: string): SearchHit[] {
         kind: "プロンプト",
         title: p.title,
         snippet: `${p.target}向け`,
-        project: projectName(p.projectId),
+        project: sampleProjectName(p.projectId),
         updatedAt: p.updatedAt,
         source: "プロンプト",
       });
@@ -249,4 +276,15 @@ export function searchAll(query: string): SearchHit[] {
   return hits;
 }
 
-export { userName, projectName, CURRENT_USER };
+export function userName(id: string) {
+  if (!isDevSampleMode()) return "担当者";
+  return sampleUserName(id);
+}
+
+export function projectName(id: string) {
+  if (!isDevSampleMode()) return id ? "プロジェクト" : "—";
+  return sampleProjectName(id);
+}
+
+export { CURRENT_USER };
+export type { SampleTask };

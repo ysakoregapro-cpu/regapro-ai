@@ -32,8 +32,17 @@ export function DesktopSidebar({ showDemoBadge }: { showDemoBadge: boolean }) {
       aria-label="メインナビゲーション"
     >
       <div className="flex h-12 items-center gap-2 border-b border-border px-4">
-        <span className="text-[14px] font-semibold tracking-tight text-text">レガプロ</span>
-        {showDemoBadge ? <DemoDataBadge /> : null}
+        <span
+          className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-tight text-text"
+          title="RegaloProfessional"
+        >
+          RegaloProfessional
+        </span>
+        {showDemoBadge ? (
+          <span className="shrink-0">
+            <DemoDataBadge />
+          </span>
+        ) : null}
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 p-2">
         {NAV_PRIMARY.map((item) => {

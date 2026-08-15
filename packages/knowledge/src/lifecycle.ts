@@ -72,15 +72,9 @@ export function assertNotDirectPublishFromAi(
   }
 }
 
-export function computeContentHash(content: string): string {
-  let hash = 0;
-  for (let i = 0; i < content.length; i++) {
-    hash = (hash << 5) - hash + content.charCodeAt(i);
-    hash |= 0;
-  }
-  return `h${Math.abs(hash).toString(16)}`;
-}
-
-export function isDuplicateHash(existing: string[], candidate: string): boolean {
-  return existing.includes(candidate);
-}
+export {
+  computeContentHash,
+  isDuplicateHash,
+  sha256Hex,
+  normalizeKnowledgeText,
+} from "./hash.js";

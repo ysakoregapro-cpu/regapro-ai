@@ -17,6 +17,7 @@ import {
   getPublicProfile,
   resolveSessionAccess,
 } from "@/lib/data/dev-sample/memberships";
+import { isDevSampleMode } from "@/lib/supabase/env";
 import {
   buildResearchAnswer,
   completeResearchDemo,
@@ -29,6 +30,15 @@ function newId(): string {
   return globalThis.crypto.randomUUID();
 }
 
+export type StoredMessageCitation = {
+  id: string;
+  title: string;
+  source: string;
+  excerpt?: string | null;
+  chunkId?: string | null;
+  documentId?: string | null;
+};
+
 export type StoredMessage = {
   id: string;
   threadId: string;
@@ -40,6 +50,8 @@ export type StoredMessage = {
   classificationConfidence?: number;
   classificationSource?: string;
   sensitivitySignals?: string[];
+  /** Reloaded from message_citations in supabase mode (and in-memory for sample). */
+  citations?: StoredMessageCitation[];
 };
 
 export type StoredThread = {
@@ -686,30 +698,37 @@ export function craftDemoAssistantReply(
     }
   }
 
-  const subject = findColleagueMention(userText);
-  if (subject && /相談|最近.*何を|どう考え|実給与|実際の給与/.test(userText)) {
-    return {
-      content: answerAboutColleague(userText, subject.userId),
-      citations: [],
-    };
-  }
+  // Colleague lore is fixture-only — never answer from SAMPLE_MEMBERSHIPS in supabase mode.
+  if (isDevSampleMode()) {
+    const subject = findColleagueMention(userText);
+    if (subject && /相談|最近.*何を|どう考え|実給与|実際の給与/.test(userText)) {
+      return {
+        content: answerAboutColleague(userText, subject.userId),
+        citations: [],
+      };
+    }
 
-  if (subject && /業務|担当|どんな仕事/.test(userText)) {
-    return {
-      content: answerAboutColleague(userText, subject.userId),
-      citations: [],
-    };
+    if (subject && /業務|担当|どんな仕事/.test(userText)) {
+      return {
+        content: answerAboutColleague(userText, subject.userId),
+        citations: [],
+      };
+    }
   }
 
   const short =
     userText.replace(/\s+/g, " ").trim().slice(0, 40) +
     (userText.length > 40 ? "…" : "");
 
+  const modeLine = isDevSampleMode()
+    ? "いまは確認用のデータで動いています。社内検索やWeb調査がまだ接続されていないため、外部の情報源を参照してはいません。"
+    : "会話は組織データへ保存されています。社内検索やWeb調査バックエンドは未接続のため、外部の情報源を参照してはいません。";
+
   return {
     content: [
       `「${short}」という依頼を受け付けました。`,
       "",
-      "いまは確認用のデータで動いています。社内検索やWeb調査がまだ接続されていないため、外部の情報源を参照してはいません。",
+      modeLine,
       "",
       "そのまま進められること:",
       "・タスクとして登録する",
@@ -731,12 +750,13 @@ function findColleagueMention(text: string) {
 /**
  * Creates or returns the assistant reply for the latest user message.
  * Idempotent per (threadId, userMessageId). Safe to call on reload with started=1.
+ * Routes through AI Answer Runtime (honest fallback when models/search disconnect).
  */
-export function ensureAssistantReply(input: {
+export async function ensureAssistantReply(input: {
   threadId: string;
   userId?: string;
   idempotencyKey?: string;
-}): {
+}): Promise<{
   ok: true;
   message: StoredMessage;
   created: boolean;
@@ -745,7 +765,7 @@ export function ensureAssistantReply(input: {
   ok: false;
   code: "THREAD_NOT_FOUND" | "NO_USER_MESSAGE";
   message: string;
-} {
+}> {
   const userId = input.userId ?? CURRENT_MEMBERSHIP.userId;
   const thread = getThread(input.threadId, userId);
   if (!thread) {
@@ -774,25 +794,97 @@ export function ensureAssistantReply(input: {
     }
   }
 
-  const crafted = craftDemoAssistantReply(lastUser.content, {
-    threadId: input.threadId,
-    workflowType: thread.workflowType,
+  const { access } = resolveSessionAccess({
+    userId,
+    threadLevel: thread.confidentialityLevel,
+    threadVisibility: thread.visibility,
+    participantThreadIds:
+      thread.ownerUserId === userId ? [thread.id] : [],
   });
+
+  const runs = listResearchRunsForThread(input.threadId);
+  const run = runs[runs.length - 1] ?? null;
+  const arts = listArtifactsForThread(input.threadId);
+  const art = arts[arts.length - 1] ?? null;
+
+  const hints = {
+    researchSummary: run ? buildResearchAnswer(run) : null,
+    artifactSummary: art
+      ? [
+          `「${art.title}」の資料作成を進めました。`,
+          "",
+          art.formatStatus === "ready"
+            ? `Markdown下書きを成果物として保存しました（v${art.version}）。`
+            : `${art.disabledReason ?? "この形式は未接続です"}。代わりにMarkdown下書きを右ペインに表示しています。`,
+          "",
+          "同じチャットから修正指示を送るとVersionが増えます。",
+        ].join("\n")
+      : null,
+  };
+
+  const { generateSampleAssistantAnswer, workflowToAnswerIntent } = await import(
+    "@/lib/application/ai-answer-sample"
+  );
+
+  // Preserve colleague/dev-sample lore only via craftDemo when no workflow resource.
+  let content: string;
+  let citations: StoredMessageCitation[] | undefined;
+  if (hints.researchSummary || hints.artifactSummary) {
+    const answer = await generateSampleAssistantAnswer({
+      access,
+      threadId: input.threadId,
+      messageId: lastUser.id,
+      userText: lastUser.content,
+      workflowHint: workflowToAnswerIntent(thread.workflowType),
+      hints,
+    });
+    content = answer.text;
+    citations = answer.citations.map((c) => ({
+      id: c.id,
+      title: c.title,
+      source: c.sourceType,
+      excerpt: c.excerpt,
+      documentId: c.sourceId,
+    }));
+  } else if (isDevSampleMode() && findColleagueMention(lastUser.content)) {
+    content = craftDemoAssistantReply(lastUser.content, {
+      threadId: input.threadId,
+      workflowType: thread.workflowType,
+    }).content;
+  } else {
+    const answer = await generateSampleAssistantAnswer({
+      access,
+      threadId: input.threadId,
+      messageId: lastUser.id,
+      userText: lastUser.content,
+      workflowHint: workflowToAnswerIntent(thread.workflowType),
+      hints,
+    });
+    content = answer.text;
+    citations = answer.citations.map((c) => ({
+      id: c.id,
+      title: c.title,
+      source: c.sourceType,
+      excerpt: c.excerpt,
+      documentId: c.sourceId,
+    }));
+  }
+
   const assistantMsg: StoredMessage = {
     id: newId(),
     threadId: input.threadId,
     role: "assistant",
-    content: crafted.content,
+    content,
     createdAt: new Date().toISOString(),
     confidentialityLevel: thread.confidentialityLevel,
     visibility: thread.visibility,
     classificationSource: "template",
+    citations,
   };
 
   const next = [...messages, assistantMsg];
   s.messages.set(input.threadId, next);
   s.replyIdempotency.set(replyKey, assistantMsg.id);
-  // Also key by user message for reload without client key
   s.replyIdempotency.set(`reply:${input.threadId}:${lastUser.id}`, assistantMsg.id);
   thread.updatedAt = assistantMsg.createdAt;
   s.auditLogs.push({

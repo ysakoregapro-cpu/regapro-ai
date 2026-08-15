@@ -64,7 +64,7 @@ describe("home → chat start persistence", () => {
 });
 
 describe("assistant reply generation", () => {
-  it("shows first message then generates one assistant reply", () => {
+  it("shows first message then generates one assistant reply", async () => {
     const started = startChatFromHome({
       content: "求人票の作り方を整理して",
       requestedLevel: "company",
@@ -73,7 +73,7 @@ describe("assistant reply generation", () => {
     expect(started.ok).toBe(true);
     if (!started.ok) return;
 
-    const first = ensureAssistantReply({ threadId: started.threadId });
+    const first = await ensureAssistantReply({ threadId: started.threadId });
     expect(first.ok).toBe(true);
     if (!first.ok) return;
     expect(first.created).toBe(true);
@@ -81,7 +81,7 @@ describe("assistant reply generation", () => {
     expect(first.messages[0]?.role).toBe("user");
     expect(first.messages[1]?.role).toBe("assistant");
 
-    const second = ensureAssistantReply({ threadId: started.threadId });
+    const second = await ensureAssistantReply({ threadId: started.threadId });
     expect(second.ok).toBe(true);
     if (!second.ok) return;
     expect(second.created).toBe(false);
@@ -89,7 +89,7 @@ describe("assistant reply generation", () => {
     expect(second.message.id).toBe(first.message.id);
   });
 
-  it("does not put confidentiality boilerplate in normal replies", () => {
+  it("does not put confidentiality boilerplate in normal replies", async () => {
     const started = startChatFromHome({
       content: "イベント会場の動線を確認したい",
       requestedLevel: "company",
@@ -97,7 +97,7 @@ describe("assistant reply generation", () => {
     });
     expect(started.ok).toBe(true);
     if (!started.ok) return;
-    const reply = ensureAssistantReply({ threadId: started.threadId });
+    const reply = await ensureAssistantReply({ threadId: started.threadId });
     expect(reply.ok).toBe(true);
     if (!reply.ok) return;
     expect(reply.message.content).not.toMatch(/情報区分/);
@@ -110,7 +110,7 @@ describe("assistant reply generation", () => {
     expect(crafted.content).toMatch(/接続されていない|参照してはいません/);
   });
 
-  it("append + reply keeps a single assistant message per user turn", () => {
+  it("append + reply keeps a single assistant message per user turn", async () => {
     const started = startChatFromHome({
       content: "初回",
       requestedLevel: "company",
@@ -118,13 +118,13 @@ describe("assistant reply generation", () => {
     });
     expect(started.ok).toBe(true);
     if (!started.ok) return;
-    ensureAssistantReply({ threadId: started.threadId });
+    await ensureAssistantReply({ threadId: started.threadId });
     const appended = appendUserMessage({
       threadId: started.threadId,
       content: "続きの質問",
     });
     expect(appended.ok).toBe(true);
-    const reply = ensureAssistantReply({ threadId: started.threadId });
+    const reply = await ensureAssistantReply({ threadId: started.threadId });
     expect(reply.ok).toBe(true);
     if (!reply.ok) return;
     const assistants = reply.messages.filter((m) => m.role === "assistant");

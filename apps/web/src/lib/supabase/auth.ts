@@ -1,6 +1,16 @@
+import "server-only";
 import { CURRENT_MEMBERSHIP } from "@/lib/data/dev-sample/memberships";
 import { isDevSampleMode } from "./env";
-import { createClient } from "./server";
+import { createServerSupabaseClient } from "./server";
+import {
+  loadLiveMembership,
+  type LiveMembership,
+  type RegaproSupabaseClient,
+} from "./membership";
+import {
+  buildAccessContextFromMembership,
+  type SessionAccessBundle,
+} from "./access-context";
 
 export type SessionUser = {
   id: string;
@@ -17,18 +27,28 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     };
   }
 
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.getClaims();
-  if (error || !data?.claims) {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) {
     return null;
   }
 
-  const sub = String(data.claims.sub ?? "");
-  const email = String(data.claims.email ?? "");
+  const { data: profileData } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("user_id", data.user.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  const profile = profileData as { display_name?: string } | null;
+
   return {
-    id: sub,
-    email,
-    displayName: email.split("@")[0] || "利用者",
+    id: data.user.id,
+    email: data.user.email ?? "",
+    displayName:
+      profile?.display_name ||
+      data.user.email?.split("@")[0] ||
+      "利用者",
   };
 }
 
@@ -39,3 +59,45 @@ export async function requireSessionUser(): Promise<SessionUser> {
   }
   return user;
 }
+
+/**
+ * Current user + live membership + AccessContext.
+ * Returns null when unauthenticated or when the user has no org membership.
+ */
+export async function getSessionAccess(opts?: {
+  threadLevel?: SessionAccessBundle["access"]["threadConfidentialityLevel"];
+  threadVisibility?: SessionAccessBundle["access"]["threadVisibility"];
+  participantThreadIds?: string[];
+  projectIds?: string[];
+  auditMode?: boolean;
+  auditCaseId?: string | null;
+}): Promise<SessionAccessBundle | null> {
+  if (isDevSampleMode()) {
+    return null;
+  }
+
+  const supabase = (await createServerSupabaseClient()) as unknown as RegaproSupabaseClient;
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) {
+    return null;
+  }
+
+  const membership = await loadLiveMembership(supabase, data.user.id);
+  if (!membership) {
+    return null;
+  }
+
+  return buildAccessContextFromMembership(membership, opts);
+}
+
+export async function requireSessionAccess(
+  opts?: Parameters<typeof getSessionAccess>[0],
+): Promise<SessionAccessBundle> {
+  const bundle = await getSessionAccess(opts);
+  if (!bundle) {
+    throw new Error("NO_ORGANIZATION_MEMBERSHIP");
+  }
+  return bundle;
+}
+
+export type { LiveMembership, SessionAccessBundle };

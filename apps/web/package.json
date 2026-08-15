@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@regapro/artifacts": "*",
+    "@regapro/ai-runtime": "*",
     "@regapro/database": "*",
     "@regapro/knowledge": "*",
     "@regapro/local-ai": "*",

@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { getDataMode, hasSupabasePublicConfig } from "./env";
+import { getDataMode, getSupabasePublicEnv, hasSupabasePublicConfig } from "./env";
+import type { Database } from "./types";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -13,14 +14,13 @@ export async function updateSession(request: NextRequest) {
   if (!hasSupabasePublicConfig()) {
     return new NextResponse(
       "Supabase public environment is not configured for REGAPRO_DATA_MODE=supabase.",
-      { status: 500 }
+      { status: 500 },
     );
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
+  const { url, publishableKey } = getSupabasePublicEnv();
 
-  const supabase = createServerClient(url, publishableKey, {
+  const supabase = createServerClient<Database>(url, publishableKey, {
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -37,9 +37,9 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  // Prefer getClaims() for auth validation (Supabase SSR guidance).
-  const { data } = await supabase.auth.getClaims();
-  const claims = data?.claims;
+  // Prefer getUser() for validated session (JWT signature check).
+  const { data } = await supabase.auth.getUser();
+  const user = data.user;
   const pathname = request.nextUrl.pathname;
 
   const isAuthRoute =
@@ -50,20 +50,21 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/icons") ||
     pathname === "/favicon.ico" ||
-    pathname.startsWith("/api/health");
+    pathname.startsWith("/api/health") ||
+    pathname.startsWith("/api/auth/");
 
   if (isPublicAsset) {
     return supabaseResponse;
   }
 
-  if (!claims && !isAuthRoute) {
+  if (!user && !isAuthRoute) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(redirectUrl);
   }
 
-  if (claims && isAuthRoute) {
+  if (user && isAuthRoute) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/home";
     redirectUrl.search = "";

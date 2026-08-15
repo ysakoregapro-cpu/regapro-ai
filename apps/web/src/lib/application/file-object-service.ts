@@ -25,18 +25,29 @@ export type FileObjectMeta = {
   storageMode: "dev-sample-ephemeral" | "supabase";
   createdAt: string;
   ephemeralNotice: string | null;
+  bucket?: string;
+  path?: string;
+  checksum?: string | null;
+  originalFilename?: string;
+  durable?: boolean;
 };
 
 type Store = {
   files: Map<string, FileObjectMeta>;
   byThread: Map<string, string[]>;
+  /** Dev-sample only: bytes keyed by file id (ephemeral). */
+  bodies: Map<string, Uint8Array>;
 };
 
 const g = globalThis as unknown as { __regaproFileStore?: Store };
 
 function store(): Store {
   if (!g.__regaproFileStore) {
-    g.__regaproFileStore = { files: new Map(), byThread: new Map() };
+    g.__regaproFileStore = {
+      files: new Map(),
+      byThread: new Map(),
+      bodies: new Map(),
+    };
   }
   return g.__regaproFileStore;
 }
@@ -64,6 +75,7 @@ export function createFileObject(input: {
   confidentialityLevel: ConfidentialityLevel;
   visibility: Visibility;
   storageMode: "dev-sample-ephemeral" | "supabase";
+  content?: Uint8Array;
 }): FileObjectMeta {
   const check = validateFileUpload({
     mimeType: input.mimeType,
@@ -77,6 +89,7 @@ export function createFileObject(input: {
     threadId: input.threadId,
     messageId: input.messageId,
     name: input.name,
+    originalFilename: input.name,
     mimeType: input.mimeType,
     sizeBytes: input.sizeBytes,
     confidentialityLevel: input.confidentialityLevel,
@@ -87,12 +100,16 @@ export function createFileObject(input: {
       input.storageMode === "dev-sample-ephemeral"
         ? "確認用のため、再起動後は消える場合があります。本番保存ではありません。"
         : null,
+    durable: input.storageMode === "supabase",
   };
   const s = store();
   s.files.set(file.id, file);
   const list = s.byThread.get(input.threadId) ?? [];
   list.push(file.id);
   s.byThread.set(input.threadId, list);
+  if (input.content) {
+    s.bodies.set(file.id, input.content);
+  }
   return file;
 }
 
@@ -105,6 +122,10 @@ export function listFilesForThread(threadId: string) {
 
 export function getFileObject(id: string) {
   return store().files.get(id) ?? null;
+}
+
+export function getFileObjectBytes(id: string): Uint8Array | null {
+  return store().bodies.get(id) ?? null;
 }
 
 export function __resetFileStoreForTests() {

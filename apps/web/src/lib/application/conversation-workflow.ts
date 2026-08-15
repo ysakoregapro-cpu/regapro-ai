@@ -50,9 +50,9 @@ function newId() {
 /**
  * Unified entry for home tools, TopBar create, workspace research/docs, assistant tools.
  */
-export function startConversationWorkflow(
+export async function startConversationWorkflow(
   input: StartConversationInput,
-): StartConversationResult {
+): Promise<StartConversationResult> {
   const session = resolveSessionAccess({ userId: input.userId });
   const membership = session.membership;
   const workflowType = input.workflowType;
@@ -214,7 +214,7 @@ export function startConversationWorkflow(
     });
     researchRunId = run.id;
     completeResearchDemo(run.id);
-    ensureAssistantReply({
+    await ensureAssistantReply({
       threadId,
       userId: membership.userId,
       idempotencyKey: `reply:${threadId}:${messageId}`,
@@ -238,13 +238,13 @@ export function startConversationWorkflow(
       departmentId: membership.departmentId,
       projectId: input.projectId ?? null,
     });
-    ensureAssistantReply({
+    await ensureAssistantReply({
       threadId,
       userId: membership.userId,
       idempotencyKey: `reply:${threadId}:${messageId}`,
     });
   } else if (content && messageId) {
-    ensureAssistantReply({
+    await ensureAssistantReply({
       threadId,
       userId: membership.userId,
       idempotencyKey: `reply:${threadId}:${messageId}`,
@@ -419,6 +419,7 @@ export function attachFileToThread(input: {
   mimeType: string;
   sizeBytes: number;
   messageId?: string | null;
+  content?: Uint8Array;
 }): FileObjectMeta | { ok: false; message: string } {
   const thread = getThread(input.threadId);
   if (!thread) return { ok: false, message: "会話が見つかりません" };
@@ -429,8 +430,9 @@ export function attachFileToThread(input: {
     visibility: thread.visibility,
     name: input.name,
     mimeType: input.mimeType,
-    sizeBytes: input.sizeBytes,
+    sizeBytes: input.content?.byteLength ?? input.sizeBytes,
     storageMode: "dev-sample-ephemeral",
+    content: input.content,
   });
 }
 

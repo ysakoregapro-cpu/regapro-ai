@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
-import { listVisibleThreads } from "@/lib/application/chat-service";
+import { listVisibleThreadsAsync } from "@/lib/application/data-gateway";
+import { catchToJson } from "@/lib/application/api-errors";
 
 export async function GET() {
-  const threads = listVisibleThreads();
-  return NextResponse.json({ ok: true, threads });
+  try {
+    const threads = await listVisibleThreadsAsync();
+    return NextResponse.json({ ok: true, threads });
+  } catch (err) {
+    return catchToJson(err);
+  }
 }

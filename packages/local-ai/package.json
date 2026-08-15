@@ -17,6 +17,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "@regapro/knowledge": "*",
     "@regapro/shared": "*",
     "zod": "^3.24.2"
   },

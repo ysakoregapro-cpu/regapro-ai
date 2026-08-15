@@ -68,6 +68,7 @@ export function ResearchLibraryClient() {
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-[12px] text-text-secondary">
           完了した調査結果のライブラリです。新規調査はアシスタントで開始します。
+          Web Research バックエンド未接続時は確認用フローのみです（実検索済みとは表示しません）。
         </p>
         <StartResearchButton />
       </div>
@@ -78,6 +79,11 @@ export function ResearchLibraryClient() {
         <p className="py-6 text-[13px] text-text-secondary">まだ調査結果がありません</p>
       ) : (
         <div>
+          {items.some((r) => r.isDemo) ? (
+            <p className="mb-3 text-[12px] text-text-muted">
+              確認用データが含まれる項目があります。実際のWeb検索はまだ接続されていません。
+            </p>
+          ) : null}
           {items.map((r) => (
             <ListRow key={r.id}>
               <div className="min-w-0 flex-1">
@@ -85,6 +91,7 @@ export function ResearchLibraryClient() {
                 <p className="mt-0.5 text-[12px] text-text-secondary">
                   {r.projectLabel} · {r.updatedAt.slice(0, 10)} · {r.levelLabel} · 情報源{" "}
                   {r.sourceCount}
+                  {r.isDemo ? " · 確認用（実検索なし）" : ""}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Link

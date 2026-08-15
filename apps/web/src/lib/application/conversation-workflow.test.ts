@@ -33,8 +33,8 @@ beforeEach(() => {
 });
 
 describe("startConversationWorkflow", () => {
-  it("creates research thread from TopBar-style entry without message", () => {
-    const result = startConversationWorkflow({
+  it("creates research thread from TopBar-style entry without message", async () => {
+    const result = await startConversationWorkflow({
       workflowType: "research",
       idempotencyKey: "idem-research-empty-01",
     });
@@ -46,8 +46,8 @@ describe("startConversationWorkflow", () => {
     expect(result.researchRunId).toBeNull();
   });
 
-  it("home Web research with message creates ResearchRun linked to thread", () => {
-    const result = startConversationWorkflow({
+  it("home Web research with message creates ResearchRun linked to thread", async () => {
+    const result = await startConversationWorkflow({
       workflowType: "research",
       initialMessage: "有料職業紹介の手数料相場を調べて",
       idempotencyKey: "idem-research-msg-01",
@@ -62,13 +62,13 @@ describe("startConversationWorkflow", () => {
     expect(runs[0]?.status).toBe("completed");
   });
 
-  it("idempotent research run creation does not duplicate", () => {
-    const first = startConversationWorkflow({
+  it("idempotent research run creation does not duplicate", async () => {
+    const first = await startConversationWorkflow({
       workflowType: "research",
       initialMessage: "市場の平均年収を調べて",
       idempotencyKey: "idem-dup-research",
     });
-    const second = startConversationWorkflow({
+    const second = await startConversationWorkflow({
       workflowType: "research",
       initialMessage: "市場の平均年収を調べて",
       idempotencyKey: "idem-dup-research",
@@ -79,8 +79,8 @@ describe("startConversationWorkflow", () => {
     expect(listResearchRunsForThread(first.threadId)).toHaveLength(1);
   });
 
-  it("document workflow creates artifact versions", () => {
-    const started = startConversationWorkflow({
+  it("document workflow creates artifact versions", async () => {
+    const started = await startConversationWorkflow({
       workflowType: "document",
       initialMessage: "この内容を議事録にして",
       documentSubtype: "text",
@@ -134,8 +134,8 @@ describe("ResearchRun demo honesty", () => {
     expect(done.citations[0]?.url).toBeNull();
   });
 
-  it("appears in research library", () => {
-    const started = startConversationWorkflow({
+  it("appears in research library", async () => {
+    const started = await startConversationWorkflow({
       workflowType: "research",
       initialMessage: "採用市場の一般動向",
       idempotencyKey: "lib-1",

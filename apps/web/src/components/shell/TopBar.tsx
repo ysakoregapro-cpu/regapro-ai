@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, ChevronDown, FolderKanban, Menu, Plus, Search, User } from "lucide-react";
-import { CURRENT_MEMBERSHIP } from "@/lib/data/dev-sample/memberships";
+import { isDevSampleMode } from "@/lib/supabase/env";
 import { SAMPLE_NOTIFICATIONS, SAMPLE_PROJECTS } from "@/lib/data/dev-sample/catalog";
 import { cn } from "@/lib/cn";
 
@@ -49,6 +49,7 @@ export function TopBar({
 
 function ProjectSwitcher() {
   const [open, setOpen] = useState(false);
+  const projects = isDevSampleMode() ? SAMPLE_PROJECTS : [];
   return (
     <div className="relative hidden md:block">
       <button
@@ -66,17 +67,23 @@ function ProjectSwitcher() {
           role="menu"
           className="absolute right-0 z-[40] mt-1 w-56 rounded-[12px] border border-border bg-surface py-1 shadow-[var(--shadow-menu)]"
         >
-          {SAMPLE_PROJECTS.map((p) => (
-            <Link
-              key={p.id}
-              href={`/workspace/projects?id=${p.id}`}
-              className="block px-3 py-2 text-[13px] hover:bg-surface-raised"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-            >
-              {p.name}
-            </Link>
-          ))}
+          {projects.length === 0 ? (
+            <p className="px-3 py-2 text-[12px] text-text-secondary">
+              表示できるプロジェクトはまだありません
+            </p>
+          ) : (
+            projects.map((p) => (
+              <Link
+                key={p.id}
+                href={`/workspace/projects?id=${p.id}`}
+                className="block px-3 py-2 text-[13px] hover:bg-surface-raised"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+              >
+                {p.name}
+              </Link>
+            ))
+          )}
         </div>
       ) : null}
     </div>
@@ -188,7 +195,8 @@ function GlobalCreateMenu() {
 
 function NotificationCenter() {
   const [open, setOpen] = useState(false);
-  const unread = SAMPLE_NOTIFICATIONS.filter((n) => !n.read).length;
+  const notifications = isDevSampleMode() ? SAMPLE_NOTIFICATIONS : [];
+  const unread = notifications.filter((n) => !n.read).length;
   return (
     <div className="relative">
       <button
@@ -206,14 +214,18 @@ function NotificationCenter() {
       {open ? (
         <div className="absolute right-0 z-[40] mt-1 w-[min(100vw-1.5rem,20rem)] rounded-[12px] border border-border bg-surface shadow-[var(--shadow-menu)]">
           <div className="border-b border-border px-3 py-2 text-[13px] font-medium">通知</div>
-          <ul>
-            {SAMPLE_NOTIFICATIONS.map((n) => (
-              <li key={n.id} className="border-b border-border px-3 py-2.5 last:border-0">
-                <p className={cn("text-[13px]", !n.read && "font-medium")}>{n.title}</p>
-                <p className="mt-0.5 text-[12px] text-text-secondary">{n.body}</p>
-              </li>
-            ))}
-          </ul>
+          {notifications.length === 0 ? (
+            <p className="px-3 py-3 text-[12px] text-text-secondary">新しい通知はありません</p>
+          ) : (
+            <ul>
+              {notifications.map((n) => (
+                <li key={n.id} className="border-b border-border px-3 py-2.5 last:border-0">
+                  <p className={cn("text-[13px]", !n.read && "font-medium")}>{n.title}</p>
+                  <p className="mt-0.5 text-[12px] text-text-secondary">{n.body}</p>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       ) : null}
     </div>
@@ -222,6 +234,52 @@ function NotificationCenter() {
 
 function ProfileMenu() {
   const [open, setOpen] = useState(false);
+  const [profile, setProfile] = useState<{
+    name: string;
+    departmentLabel: string;
+    mode: string;
+  }>({ name: "利用者", departmentLabel: "", mode: "dev-sample" });
+  const [loggingOut, setLoggingOut] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/session");
+        const json = (await res.json()) as {
+          mode?: string;
+          user?: { displayName?: string } | null;
+          membership?: { departmentLabel?: string } | null;
+        };
+        if (cancelled) return;
+        setProfile({
+          name: json.user?.displayName || json.membership?.departmentLabel || "利用者",
+          departmentLabel: json.membership?.departmentLabel ?? "",
+          mode: json.mode ?? "dev-sample",
+        });
+      } catch {
+        /* keep defaults */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function logout() {
+    if (profile.mode === "dev-sample") return;
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.replace("/login");
+      router.refresh();
+    } finally {
+      setLoggingOut(false);
+      setOpen(false);
+    }
+  }
+
   return (
     <div className="relative">
       <button
@@ -234,7 +292,7 @@ function ProfileMenu() {
         <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-surface-sunken">
           <User className="h-3.5 w-3.5" />
         </span>
-        <span className="hidden text-[12px] md:inline">{CURRENT_MEMBERSHIP.name}</span>
+        <span className="hidden text-[12px] md:inline">{profile.name}</span>
       </button>
       {open ? (
         <div
@@ -242,8 +300,10 @@ function ProfileMenu() {
           className="absolute right-0 z-[40] mt-1 w-52 rounded-[12px] border border-border bg-surface py-1 shadow-[var(--shadow-menu)]"
         >
           <div className="border-b border-border px-3 py-2">
-            <p className="text-[13px] font-medium">{CURRENT_MEMBERSHIP.name}</p>
-            <p className="text-[11px] text-text-secondary">{CURRENT_MEMBERSHIP.departmentLabel}</p>
+            <p className="text-[13px] font-medium">{profile.name}</p>
+            {profile.departmentLabel ? (
+              <p className="text-[11px] text-text-secondary">{profile.departmentLabel}</p>
+            ) : null}
           </div>
           <Link href="/workspace" className="block px-3 py-2 text-[13px] hover:bg-surface-raised md:hidden">
             ワークスペース
@@ -254,14 +314,25 @@ function ProfileMenu() {
           <Link href="/admin" className="block px-3 py-2 text-[13px] hover:bg-surface-raised">
             管理センター
           </Link>
-          <button
-            type="button"
-            className="block w-full px-3 py-2 text-left text-[13px] text-text-secondary hover:bg-surface-raised"
-            disabled
-            title="サンプルモードではログアウトは不要です"
-          >
-            ログアウト
-          </button>
+          {profile.mode === "dev-sample" ? (
+            <button
+              type="button"
+              className="block w-full px-3 py-2 text-left text-[13px] text-text-secondary hover:bg-surface-raised"
+              disabled
+              title="サンプルモードではログアウトは不要です"
+            >
+              ログアウト
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="block w-full px-3 py-2 text-left text-[13px] hover:bg-surface-raised"
+              onClick={() => void logout()}
+              disabled={loggingOut}
+            >
+              {loggingOut ? "ログアウト中…" : "ログアウト"}
+            </button>
+          )}
         </div>
       ) : null}
     </div>
