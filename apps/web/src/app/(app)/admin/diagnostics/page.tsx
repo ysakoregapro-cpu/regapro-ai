@@ -1,11 +1,16 @@
 import { PageHeader, ConnectionStatus, StatusBadge } from "@/components/ui/primitives";
+import { getProcessUsageSnapshot } from "@regapro/ai-runtime";
 import { getDataMode, isDevSampleMode } from "@/lib/supabase/env";
+import { cloudRuntimeStatus } from "@/lib/application/ai-runtime-factory";
 
 export const metadata = { title: "診断情報" };
+export const dynamic = "force-dynamic";
 
 export default function DiagnosticsPage() {
   const mode = getDataMode();
   const sample = isDevSampleMode();
+  const runtime = cloudRuntimeStatus();
+  const usage = getProcessUsageSnapshot();
   return (
     <div className="space-y-6">
       <PageHeader
@@ -24,24 +29,46 @@ export default function DiagnosticsPage() {
           }
         />
         <ConnectionStatus
-          label="SearXNG"
-          connected={false}
-          reason="未設定のため標準検索経路はローカル検証のみ"
+          label="クラウド推論"
+          connected={runtime.aiGateway}
+          reason={
+            runtime.aiGateway
+              ? "推論ゲートウェイ接続済み（本体は RegaloProfessional Runtime）"
+              : "未設定。Local が無くてもキー設定後に同一機能を利用できます"
+          }
         />
         <ConnectionStatus
-          label="Tavily（補助）"
-          connected={false}
-          reason="APIキー未設定・実呼び出し無効"
+          label="Web検索"
+          connected={runtime.tavily}
+          reason={runtime.tavily ? "接続済み" : "未接続。結果の捏造はしません"}
         />
         <ConnectionStatus
-          label="Firecrawl（補助）"
-          connected={false}
-          reason="インターフェースのみ。プラグイン・実API呼び出しなし"
+          label="ページ取得"
+          connected={runtime.firecrawl}
+          reason={runtime.firecrawl ? "接続済み" : "未接続。検索スニペットのみ"}
         />
         <ConnectionStatus
-          label="Exa"
-          connected={false}
-          reason="交換可能なProvider。標準経路外"
+          label="ブラウザ実行（高コスト）"
+          connected={runtime.browserbase}
+          reason={
+            runtime.browserbase
+              ? "接続済み（通常取得では使いません）"
+              : "未接続"
+          }
+        />
+        <ConnectionStatus
+          label="補助検索スロット"
+          connected={runtime.exa}
+          reason={runtime.exa ? "接続済み" : "インターフェースのみ。偽結果なし"}
+        />
+        <ConnectionStatus
+          label="観測"
+          connected={runtime.langfuse}
+          reason={
+            runtime.langfuse
+              ? "接続済み（L2/L3 は metadata のみ）"
+              : "未接続"
+          }
         />
         <ConnectionStatus
           label="成果物本文"
@@ -62,11 +89,18 @@ export default function DiagnosticsPage() {
           }
         />
       </section>
+      <section className="space-y-1">
+        <h2 className="text-[14px] font-semibold">利用状況（プロセス）</h2>
+        <p className="text-[13px] text-text-secondary">
+          LLM 呼び出し {usage.llmCalls} 回 / 推定トークン {usage.tokens} /
+          失敗 {usage.failures} 回。料金そのものは一般画面に出しません。
+        </p>
+      </section>
       <section className="space-y-2">
         <h2 className="text-[14px] font-semibold">注意</h2>
         <p className="text-[13px] text-text-secondary">
-          Research は確認用フローが含まれる場合があります。実検索済みと誤解しないでください。
-          成果物本文とチャット添付ファイルは durable 保存されます（Office 出力形式の生成は未接続）。
+          外部推論エンジンは製品本体ではありません。Research は実接続時のみ実検索になります。
+          未接続時に検索完了を装いません。
         </p>
         <StatusBadge tone="neutral">業務 OS 向け診断</StatusBadge>
       </section>

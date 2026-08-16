@@ -2,13 +2,26 @@ import type { AccessContext } from "@regapro/security";
 import type { RetrievalPlanner } from "./ports.js";
 import type { IntentDecision, RetrievalPlan } from "./types.js";
 
+function hybridSignals(text: string | undefined): {
+  wantWeb: boolean;
+  wantInternal: boolean;
+} {
+  const t = text ?? "";
+  return {
+    wantWeb: /市場|業界|競合|最新|採用市場|公開情報|調べて/.test(t),
+    wantInternal: /組織|KPI|社内|課題|人員|規程|過去/.test(t),
+  };
+}
+
 export class DefaultRetrievalPlanner implements RetrievalPlanner {
   plan(input: {
     intent: IntentDecision;
     access: AccessContext;
+    text?: string;
   }): RetrievalPlan {
     void input.access; // ceiling applied at retrieval; plan stays declarative
     const intent = input.intent.intent;
+    const signals = hybridSignals(input.text);
 
     const base: RetrievalPlan = {
       intent,
@@ -28,6 +41,7 @@ export class DefaultRetrievalPlanner implements RetrievalPlanner {
         return {
           ...base,
           needInternalKnowledge: true,
+          needWeb: signals.wantWeb,
           needProjectContext: true,
           needDepartmentContext: true,
           needCitations: true,
@@ -36,6 +50,7 @@ export class DefaultRetrievalPlanner implements RetrievalPlanner {
         return {
           ...base,
           needWeb: true,
+          needInternalKnowledge: true,
           needCitations: true,
         };
       case "deep_research":
@@ -52,6 +67,7 @@ export class DefaultRetrievalPlanner implements RetrievalPlanner {
         return {
           ...base,
           needInternalKnowledge: true,
+          needWeb: signals.wantWeb,
           needProjectContext: true,
           needToolExecution: true,
         };
@@ -71,7 +87,8 @@ export class DefaultRetrievalPlanner implements RetrievalPlanner {
         return {
           ...base,
           needInternalKnowledge: true,
-          needCitations: false,
+          needWeb: signals.wantWeb && signals.wantInternal,
+          needCitations: signals.wantWeb,
         };
     }
   }

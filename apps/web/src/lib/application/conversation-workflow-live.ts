@@ -909,6 +909,106 @@ async function createAndCompleteResearch(
   assertNoSensitiveInExternalQueries(plan);
 
   const now = new Date().toISOString();
+  const {
+    createWebIntelligenceDeps,
+    DefaultWebResearchProvider,
+    DEFAULT_WEB_BUDGET,
+  } = await import("@regapro/web-intelligence");
+  const deps = createWebIntelligenceDeps(process.env);
+  const connected = deps.search.connected && plan.externalTransmissionAllowed;
+
+  let sources: ResearchRun["sources"] = [];
+  let findings: string[] = [];
+  let citations: ResearchRun["citations"] = [];
+  const isDemo = !connected;
+  const provider: ResearchRun["provider"] = connected ? "web-intelligence" : "demo";
+  const processingMetadata: Record<string, string> = {
+    mode: "supabase",
+    webConnected: String(connected),
+  };
+
+  if (connected) {
+    const researcher = new DefaultWebResearchProvider(deps);
+    const result = await researcher.research({
+      plan,
+      confidentialityLevel: input.level,
+      budget: DEFAULT_WEB_BUDGET,
+      needPageBodies: true,
+      allowBrowserEscalation: false,
+    });
+    sources = result.sources.map((s) => ({
+      id: s.id,
+      title: s.title,
+      note: s.domain,
+    }));
+    findings = result.evidence.map((e) => e.claim).filter(Boolean);
+    citations = result.sources.map((s) => ({
+      id: s.id,
+      title: s.citation.title,
+      publisher: s.domain,
+      url: s.canonicalUrl,
+      publishedAt: s.publishedAt,
+      retrievedAt: s.retrievedAt,
+      excerpt: s.citation.excerpt,
+      confidence: Math.min(1, s.relevance),
+      confidentialityLevel: "company",
+    }));
+    if (findings.length === 0 && result.sources.length === 0) {
+      findings = ["公開情報は見つかりませんでした。"];
+    }
+    processingMetadata.pagesFetched = String(result.pagesFetched);
+    processingMetadata.queriesUsed = String(result.queriesUsed.length);
+
+    if (result.sources.length > 0) {
+      try {
+        const { createServerSupabaseClient } = await import("@/lib/supabase/server");
+        const { createKnowledgeCandidateFromResearch } = await import(
+          "@/lib/application/knowledge-candidate-service"
+        );
+        const client = await createServerSupabaseClient();
+        await createKnowledgeCandidateFromResearch(client, {
+          orgId: input.orgId,
+          userId: input.userId,
+          threadId: input.threadId,
+          messageId: input.messageId,
+          title: `公開情報の候補 ${new Date().toISOString().slice(0, 10)}`,
+          content: result.sources
+            .slice(0, 5)
+            .map((s) => `${s.title}\n${s.canonicalUrl}\n${s.snippet}`)
+            .join("\n\n"),
+          confidentialityLevel: "company",
+          fromPrivateConversation: false,
+        });
+      } catch {
+        // Candidate write is optional; research result still stands.
+      }
+    }
+  } else {
+    sources = plan.sanitizedQueries.map((q, i) => ({
+      id: newId(),
+      title: `確認用候補 ${i + 1}`,
+      note: `Query計画のみ（実取得なし）: ${q}`,
+    }));
+    findings = [
+      "公開情報では表示方法に差がある（確認用）",
+      "社内手順との突合が次の確認事項になる（確認用）",
+    ];
+    citations = [
+      {
+        id: newId(),
+        title: "確認用の調査メモ",
+        publisher: "デモデータ",
+        url: null,
+        publishedAt: null,
+        retrievedAt: now,
+        excerpt:
+          "現在は確認用データで調査フローを表示しています。実際のWeb検索はまだ接続されていません。",
+        confidence: 0.35,
+        confidentialityLevel: input.level,
+      },
+    ];
+  }
+
   const run: ResearchRun = {
     id: newId(),
     threadId: input.threadId,
@@ -922,40 +1022,20 @@ async function createAndCompleteResearch(
     purpose: input.content,
     queries: plan.sanitizedQueries,
     queryPlan: plan,
-    sources: plan.sanitizedQueries.map((q, i) => ({
-      id: newId(),
-      title: `確認用候補 ${i + 1}`,
-      note: `Query計画のみ（実取得なし）: ${q}`,
-    })),
-    findings: [
-      "公開情報では表示方法に差がある（確認用）",
-      "社内手順との突合が次の確認事項になる（確認用）",
-    ],
-    citations: [
-      {
-        id: newId(),
-        title: "確認用の調査メモ",
-        publisher: "デモデータ",
-        url: null,
-        publishedAt: null,
-        retrievedAt: now,
-        excerpt:
-          "現在は確認用データで調査フローを表示しています。実際のWeb検索はまだ接続されていません。",
-        confidence: 0.35,
-        confidentialityLevel: input.level,
-      },
-    ],
+    sources,
+    findings,
+    citations,
     resultArtifactId: null,
     startedAt: now,
     completedAt: now,
     failedAt: null,
-    provider: "demo",
-    isDemo: true,
+    provider,
+    isDemo,
     errorCode: null,
     errorMessage: null,
-    processingMetadata: { mode: "supabase", note: "fake browsing disabled" },
+    processingMetadata,
     title: input.content.slice(0, 40) || "調査",
-    demoNoticeShown: true,
+    demoNoticeShown: isDemo,
   };
 
   await persist.research.create(run);

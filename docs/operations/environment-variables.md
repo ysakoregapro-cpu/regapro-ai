@@ -13,8 +13,19 @@ Regapro AI の環境変数リファレンス。**秘密情報はクライアン�
 | `RESEARCH_FALLBACK_PROVIDER` | ❌ | Server only | `tavily` or `exa` (not firecrawl) |
 | `TAVILY_API_KEY` | ❌ | Server only | If fallback = tavily |
 | `EXA_API_KEY` | ❌ | Server only | If fallback = exa |
-| `OPENAI_API_KEY` | ❌ | Server only | External LLM (optional) |
-| `ANTHROPIC_API_KEY` | ❌ | Server only | External LLM (optional) |
+| `AI_GATEWAY_API_KEY` | ❌ | Server only | Cloud inference gateway (not the product) |
+| `TAVILY_API_KEY` | ❌ | Server only | Primary web search |
+| `FIRECRAWL_API_KEY` | ❌ | Server only | Page fetch / scrape |
+| `BROWSERBASE_API_KEY` | ❌ | Server only | JS escalation only |
+| `BROWSERBASE_PROJECT_ID` | ❌ | Server only | Browser session project |
+| `LANGFUSE_PUBLIC_KEY` | ❌ | Server only | Observability |
+| `LANGFUSE_SECRET_KEY` | ❌ | Server only | Observability |
+| `LANGFUSE_BASE_URL` | ❌ | Server only | Langfuse Cloud Japan base URL |
+| `REGAPRO_MODEL_FAST` | ❌ | Server only | Model role override |
+| `REGAPRO_MODEL_MAIN` | ❌ | Server only | Model role override |
+| `REGAPRO_MODEL_REASONING` | ❌ | Server only | Model role override |
+| `REGAPRO_MODEL_CODE` | ❌ | Server only | Model role override |
+| `REGAPRO_MODEL_VISION` | ❌ | Server only | Model role override |
 | `CRON_SECRET` | ❌ | Server only | Cron endpoint auth |
 | `NODE_ENV` | auto | Both | development / production |
 
@@ -54,12 +65,9 @@ EXA_API_KEY=...
 POLL_INTERVAL_MS=5000
 ```
 
-## NOT Used / 使用しない
+## NOT Used as product identity / 製品本体ではない
 
-| Variable | Reason |
-|---|---|
-| `FIRECRAWL_API_KEY` | Firecrawl is interface-only, no API calls |
-| Any Firecrawl-related env | Policy: no Firecrawl integration |
+Vercel AI Gateway / Tavily / Firecrawl / Browserbase / Langfuse は実行エンジンまたは観測であり、RegaloProfessional AI 本体ではありません。
 
 ## Environment Files / 環境ファイル
 

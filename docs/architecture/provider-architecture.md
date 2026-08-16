@@ -16,12 +16,17 @@ ApplicationService
 
 ### Research Providers / 調査プロバイダー
 
+実装の正本は [Web Intelligence Runtime](./web-intelligence-runtime.md) です。SearXNG は互換 slot として残しています。
+
 | Provider | Role | Status |
 |---|---|---|
-| `SearXNGProvider` | **Primary** | Active |
-| `TavilyProvider` | Fallback interface | Interface only |
-| `FirecrawlProvider` | Fallback interface | **Interface only — NO API calls, NO install** |
-| `ExaProvider` | Fallback interface | Interface only |
+| Tavily (`WebSearchProvider`) | Primary web search / research | Connected when `TAVILY_API_KEY` is set |
+| Firecrawl (`WebContentProvider`) | Page fetch / scrape | Connected when `FIRECRAWL_API_KEY` is set |
+| Browserbase (`BrowserProvider`) | JS / interactive escalation only | Connected when Browserbase env is set |
+| Exa | Secondary search slot | Interface; no fake results |
+| SearXNG | Legacy slot | Empty results unless configured |
+
+LLM / 推論は [Cloud Model Runtime](./cloud-model-runtime.md)。Vercel AI Gateway は製品本体ではありません。
 
 ```typescript
 // packages/application/src/providers/research-provider.ts
@@ -51,10 +56,12 @@ interface ResearchResult {
 
 | Provider | Role | Location |
 |---|---|---|
-| `BrowserLocalLLMProvider` | Optional primary | Client (WebGPU/WASM) |
-| `OpenAIProvider` | Optional external | Server |
-| `AnthropicProvider` | Optional external | Server |
-| `NoOpLLMProvider` | Default when none configured | — |
+| `VercelGatewayModelProvider` | Cloud inference engine (swappable) | Server |
+| `SelfHostedModelProviderSlot` | Future self-host replacement | Server |
+| `BrowserLocalLLMProvider` | Optional on-device | Client (WebGPU/WASM) |
+| `HonestFallbackModelProvider` | Default when none connected | — |
+
+See [Cloud Model Runtime](./cloud-model-runtime.md). Gateway / OpenAI / Anthropic は製品名ではありません。
 
 See [Browser Local LLM](./browser-local-llm.md) and [ADR 003](../adr/003-external-ai-optional.md).
 

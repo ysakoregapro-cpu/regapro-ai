@@ -19,10 +19,10 @@ export type ResearchStatus =
 export const RESEARCH_PROGRESS_LABELS: Record<ResearchStatus, string> = {
   draft: "調査を準備しています",
   queued: "調査を準備しています",
-  searching: "情報を探しています",
+  searching: "Web情報を確認中",
   reading: "ページを読み取っています",
-  synthesizing: "情報を整理しています",
-  completed: "回答を作成しています",
+  synthesizing: "社内情報を確認中",
+  completed: "回答生成中",
   failed: "調査を完了できませんでした",
   cancelled: "調査を取り消しました",
 };
@@ -59,7 +59,7 @@ export type ResearchRun = {
   startedAt: string;
   completedAt: string | null;
   failedAt: string | null;
-  provider: "demo" | "searxng" | "http";
+  provider: "demo" | "searxng" | "http" | "web-intelligence";
   isDemo: boolean;
   errorCode: string | null;
   errorMessage: string | null;

@@ -9,14 +9,21 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./langfuse-node": {
+      "types": "./dist/langfuse-node.d.ts",
+      "import": "./dist/langfuse-node.js"
     }
   },
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   },
   "dependencies": {
+    "@langfuse/otel": "^5.10.0",
+    "@langfuse/tracing": "^5.10.0",
+    "@opentelemetry/sdk-node": "^0.221.0",
     "@regapro/shared": "*",
     "zod": "^3.24.2"
   },

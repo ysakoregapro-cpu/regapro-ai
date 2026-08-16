@@ -113,7 +113,17 @@ export type ModelProviderId =
   | "honest-fallback"
   | "browser-local"
   | "server-llm"
-  | "rules-template";
+  | "rules-template"
+  | "vercel-gateway"
+  | "self-hosted";
+
+export type ModelRole = "fast" | "main" | "reasoning" | "code" | "vision";
+
+export type ModelUsageMetadata = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+};
 
 export type AnswerResult = {
   text: string;
@@ -124,6 +134,10 @@ export type AnswerResult = {
     providerId: ModelProviderId;
     modelId: string;
     connected: boolean;
+    role?: ModelRole | null;
+    fallbackCount?: number;
+    usage?: ModelUsageMetadata | null;
+    estimatedCostUsd?: number | null;
   };
   retrievalPlan: RetrievalPlan;
   intent: IntentDecision;
@@ -137,8 +151,15 @@ export type PipelineTrace = {
   retrievalTypes: Array<"internal" | "web" | "research">;
   retrievedCount: number;
   modelProvider: ModelProviderId;
+  selectedModelRole?: ModelRole | null;
+  actualModelId?: string;
+  fallbackCount?: number;
+  webProvider?: string | null;
+  tokenUsage?: ModelUsageMetadata | null;
+  estimatedCostUsd?: number | null;
   latencyMs: number;
   failureStage: string | null;
+  success?: boolean;
 };
 
 export type WorkflowAnswerHints = {

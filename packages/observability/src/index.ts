@@ -1,4 +1,20 @@
 import { z } from "zod";
+export { scrubSecrets } from "./secrets.js";
+export {
+  buildSafeTracePayload,
+  langfuseConfigured,
+  type RuntimeTraceRecord,
+} from "./tracing.js";
+export { emitRuntimeTrace, flushLangfuse } from "./langfuse.js";
+export {
+  EVAL_FIXTURES,
+  runEvaluationHarness,
+  scoreEvalCase,
+  type EvalAxis,
+  type EvalCategory,
+  type EvalFixture,
+  type EvalRunnerOutput,
+} from "./evaluation.js";
 
 export const AuditLogEntrySchema = z.object({
   id: z.string().uuid(),
@@ -12,34 +28,6 @@ export const AuditLogEntrySchema = z.object({
 });
 
 export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;
-
-const SECRET_KEYS = [
-  "password",
-  "token",
-  "apiKey",
-  "api_key",
-  "secret",
-  "authorization",
-  "cookie",
-];
-
-export function scrubSecrets(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(scrubSecrets);
-  }
-  if (value && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(value)) {
-      if (SECRET_KEYS.some((s) => key.toLowerCase().includes(s.toLowerCase()))) {
-        out[key] = "[REDACTED]";
-      } else {
-        out[key] = scrubSecrets(val);
-      }
-    }
-    return out;
-  }
-  return value;
-}
 
 export const ProviderStatusSchema = z.object({
   name: z.string(),
@@ -89,7 +77,7 @@ export function createEmptyDiagnosticStatus(): DiagnosticStatus {
     providers: [],
     jobs: { pending: 0, failed: 0, retry: 0 },
     notifications: { pendingDeliveries: 0, failedDeliveries: 0 },
-    search: { provider: "searxng", available: true },
+    search: { provider: "disconnected", available: false },
     llm: { localAvailable: false, remoteConnected: false },
     storage: { available: true },
     lastErrors: [],

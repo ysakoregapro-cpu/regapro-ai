@@ -1,17 +1,11 @@
 import type { AnswerComposer } from "./ports.js";
 import type { AnswerResult } from "./types.js";
+import type { ModelGenerateOutput } from "./ports.js";
 
 export class DefaultAnswerComposer implements AnswerComposer {
   compose(input: {
-    model: {
-      text: string;
-      confidence: number;
-      providerId: AnswerResult["model"]["providerId"];
-      modelId: string;
-      connected: boolean;
-      limitations: string[];
-    };
-    context: { items: { citation: AnswerResult["citations"][number] }[] };
+    model: ModelGenerateOutput;
+    context: { items: { citation: AnswerResult["citations"][number]; sourceType?: AnswerResult["citations"][number]["sourceType"] }[] };
     plan: AnswerResult["retrievalPlan"];
     intent: AnswerResult["intent"];
   }): AnswerResult {
@@ -25,7 +19,8 @@ export class DefaultAnswerComposer implements AnswerComposer {
         i.citation.sourceType === "knowledge_chunk",
     );
     const usedWeb = input.context.items.some(
-      (i) => i.citation.sourceType === "web",
+      (i) =>
+        i.citation.sourceType === "web" || i.citation.sourceType === "research",
     );
 
     return {
@@ -37,6 +32,10 @@ export class DefaultAnswerComposer implements AnswerComposer {
         providerId: input.model.providerId,
         modelId: input.model.modelId,
         connected: input.model.connected,
+        role: input.model.role ?? null,
+        fallbackCount: input.model.fallbackCount ?? 0,
+        usage: input.model.usage ?? null,
+        estimatedCostUsd: input.model.estimatedCostUsd ?? null,
       },
       retrievalPlan: input.plan,
       intent: input.intent,

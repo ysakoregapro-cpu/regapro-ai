@@ -9,6 +9,7 @@
     { "path": "./packages/tasks" },
     { "path": "./packages/notifications" },
     { "path": "./packages/local-ai" },
+    { "path": "./packages/web-intelligence" },
     { "path": "./packages/ai-runtime" },
     { "path": "./packages/prompting" },
     { "path": "./packages/artifacts" },

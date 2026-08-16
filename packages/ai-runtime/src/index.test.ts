@@ -63,6 +63,23 @@ describe("DefaultRetrievalPlanner", () => {
     expect(plan.includeAuditCases).toBe(false);
     expect(plan.needWeb).toBe(true);
     expect(plan.needDeepResearch).toBe(true);
+    expect(plan.needInternalKnowledge).toBe(true);
+  });
+
+  it("pairs web search with internal knowledge", () => {
+    const plan = planner.plan({
+      intent: {
+        intent: "web_search",
+        confidence: 1,
+        reason: "t",
+        provider: "rules",
+      },
+      access: access(),
+      text: "通信市場の最新動向を調べて",
+    });
+    expect(plan.needWeb).toBe(true);
+    expect(plan.needInternalKnowledge).toBe(true);
+    expect(plan.includePrivateConversations).toBe(false);
   });
 });
 

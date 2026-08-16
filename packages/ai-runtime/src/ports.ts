@@ -22,6 +22,7 @@ export type RetrievalPlanner = {
   plan(input: {
     intent: IntentDecision;
     access: AccessContext;
+    text?: string;
   }): RetrievalPlan;
 };
 
@@ -74,6 +75,7 @@ export type ModelGenerateInput = {
   plan: RetrievalPlan;
   intent: IntentDecision;
   hints?: WorkflowAnswerHints;
+  role?: import("./types.js").ModelRole | null;
 };
 
 export type ModelGenerateOutput = {
@@ -83,6 +85,10 @@ export type ModelGenerateOutput = {
   modelId: string;
   connected: boolean;
   limitations: string[];
+  role?: import("./types.js").ModelRole | null;
+  fallbackCount?: number;
+  usage?: import("./types.js").ModelUsageMetadata | null;
+  estimatedCostUsd?: number | null;
 };
 
 export type ModelProvider = {
@@ -109,14 +115,7 @@ export type AnswerPipelineDeps = {
   contextBuilder: ContextBuilder;
   model: ModelProvider;
   answerComposer: AnswerComposer;
-  onTrace?: (trace: {
-    intent: AnswerIntent;
-    retrievalTypes: Array<"internal" | "web" | "research">;
-    retrievedCount: number;
-    modelProvider: ModelProviderId;
-    latencyMs: number;
-    failureStage: string | null;
-  }) => void;
+  onTrace?: (trace: import("./types.js").PipelineTrace) => void;
 };
 
 export type RunAnswerPipelineInput = {

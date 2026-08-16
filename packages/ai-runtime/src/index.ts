@@ -19,9 +19,22 @@ export {
   type KnowledgeSearchPort,
 } from "./retrievers/hybrid.js";
 export {
+  WebIntelligenceRetriever,
+  WebIntelligenceResearchRetriever,
+} from "./retrievers/web-intelligence.js";
+export {
   HonestFallbackModelProvider,
   BrowserLocalModelProviderSlot,
 } from "./model/honest-fallback.js";
+export { VercelGatewayModelProvider, SelfHostedModelProviderSlot } from "./model/vercel-gateway.js";
+export { FallbackChainModelProvider, createCloudModelProvider } from "./model/fallback-chain.js";
+export { ContextGroundedModelProvider } from "./model/context-grounded.js";
+export { CapabilityModelRouter, fallbackRoles } from "./model/router.js";
+export { ModelPolicy, extractRoutingSignals } from "./model/policy.js";
+export { createModelCapabilityRegistry, estimateCostUsd } from "./model/registry.js";
+export { RuntimeBudgetGuard, DEFAULT_RUNTIME_BUDGET, getProcessUsageSnapshot } from "./model/budget.js";
+export { ProviderHealth, healthFor } from "./model/circuit-breaker.js";
+export { filterOutboundLlmPayload } from "./model/security-filter.js";
 
 import { RuleBasedIntentRouter } from "./intent-router.js";
 import { DefaultRetrievalPlanner } from "./retrieval-plan.js";
@@ -37,7 +50,13 @@ import { HybridInternalKnowledgeRetriever } from "./retrievers/hybrid.js";
 import type { KnowledgeSearchPort } from "./retrievers/hybrid.js";
 import { HonestFallbackModelProvider } from "./model/honest-fallback.js";
 import { createAnswerRuntimeLogger } from "./observability.js";
-import type { AnswerPipelineDeps, InternalKnowledgeRetriever } from "./ports.js";
+import type {
+  AnswerPipelineDeps,
+  InternalKnowledgeRetriever,
+  ModelProvider,
+  ResearchRetriever,
+  WebRetriever,
+} from "./ports.js";
 import type { AccessContext } from "@regapro/security";
 import type { EmbeddingProvider } from "@regapro/knowledge";
 import { createDefaultEmbeddingProvider } from "@regapro/knowledge";
@@ -52,6 +71,9 @@ export function createDefaultAnswerPipelineDeps(input?: {
   knowledgeSearch?: KnowledgeSearchPort;
   embedding?: EmbeddingProvider;
   internalKnowledge?: InternalKnowledgeRetriever;
+  web?: WebRetriever;
+  research?: ResearchRetriever;
+  model?: ModelProvider;
   onTrace?: AnswerPipelineDeps["onTrace"];
 }): AnswerPipelineDeps {
   const logger = createAnswerRuntimeLogger();
@@ -74,10 +96,10 @@ export function createDefaultAnswerPipelineDeps(input?: {
     intentRouter: new RuleBasedIntentRouter(),
     retrievalPlanner: new DefaultRetrievalPlanner(),
     internalKnowledge,
-    web: new DisconnectedWebRetriever(),
-    research: new DisconnectedResearchRetriever(),
+    web: input?.web ?? new DisconnectedWebRetriever(),
+    research: input?.research ?? new DisconnectedResearchRetriever(),
     contextBuilder: new DefaultContextBuilder(),
-    model: new HonestFallbackModelProvider(),
+    model: input?.model ?? new HonestFallbackModelProvider(),
     answerComposer: new DefaultAnswerComposer(),
     onTrace: input?.onTrace ?? ((t) => logger.emit(t)),
   };

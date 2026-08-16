@@ -16,7 +16,9 @@ export class HonestFallbackModelProvider implements ModelProvider {
     }
     if (
       input.plan.needInternalKnowledge &&
-      input.context.items.filter((i) => i.sourceType === "knowledge").length === 0
+      input.context.items.filter(
+        (i) => i.sourceType === "knowledge" || i.sourceType === "knowledge_chunk",
+      ).length === 0
     ) {
       limitations.push("利用可能な社内ナレッジが見つかりませんでした（または未接続です）。");
     }

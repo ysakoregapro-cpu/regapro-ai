@@ -38,6 +38,7 @@ export async function runAnswerPipeline(
     const plan = deps.retrievalPlanner.plan({
       intent,
       access: input.request.access,
+      text: input.request.userText,
     });
 
     // Hard security invariants.
@@ -115,8 +116,14 @@ export async function runAnswerPipeline(
       retrievalTypes,
       retrievedCount,
       modelProvider: modelOut.providerId,
+      selectedModelRole: modelOut.role ?? null,
+      actualModelId: modelOut.modelId,
+      fallbackCount: modelOut.fallbackCount ?? 0,
+      tokenUsage: modelOut.usage ?? null,
+      estimatedCostUsd: modelOut.estimatedCostUsd ?? null,
       latencyMs: Date.now() - started,
       failureStage: null,
+      success: true,
     });
 
     return answer;
@@ -128,6 +135,7 @@ export async function runAnswerPipeline(
       modelProvider: deps.model.id,
       latencyMs: Date.now() - started,
       failureStage: failureStage ?? "unknown",
+      success: false,
     });
     throw err;
   }
