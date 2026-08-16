@@ -117,6 +117,18 @@ describe("filterOutboundLlmPayload", () => {
     expect(payload.metadataOnlyTrace).toBe(true);
     expect(payload.user).not.toMatch(/sk-abcdefghijklmnopqrstuvwxyz/);
   });
+
+  it("separates internal/web counts and does not invent company facts when empty", () => {
+    const payload = filterOutboundLlmPayload({
+      access: access(),
+      userText: "通信事業の社内状況と外部環境",
+      context: emptyContext(),
+    });
+    expect(payload.user).toMatch(/社内出典: 0件/);
+    expect(payload.user).toMatch(/外部出典: 0件/);
+    expect(payload.system).toMatch(/一般知識で補完しない/);
+    expect(payload.system).toMatch(/固定ラベルを本文に書かない/);
+  });
 });
 
 describe("VercelGatewayModelProvider", () => {

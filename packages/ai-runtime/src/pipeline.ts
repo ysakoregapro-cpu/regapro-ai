@@ -1,9 +1,24 @@
 import type { AnswerPipelineDeps, RunAnswerPipelineInput } from "./ports.js";
 import type { AnswerResult, RetrievedItem } from "./types.js";
+import { recordAnswerDiagnostic } from "./diagnostics.js";
+import { readRetrieverStats } from "./retrievers/web-intelligence.js";
+
+function isInternal(item: RetrievedItem): boolean {
+  return item.sourceType === "knowledge" || item.sourceType === "knowledge_chunk";
+}
+
+function isWeb(item: RetrievedItem): boolean {
+  return item.sourceType === "web";
+}
+
+function isResearch(item: RetrievedItem): boolean {
+  return item.sourceType === "research";
+}
 
 /**
  * Canonical AI answer pipeline.
  * Domain never depends on a concrete LLM or search engine — only ports.
+ * Internal and web retrieval are independent: a zero on one side does not skip the other.
  */
 export async function runAnswerPipeline(
   deps: AnswerPipelineDeps,
@@ -13,6 +28,9 @@ export async function runAnswerPipeline(
   let failureStage: string | null = null;
   const retrievalTypes: Array<"internal" | "web" | "research"> = [];
   let retrievedCount = 0;
+  let planNeedInternal = false;
+  let planNeedWeb = false;
+  let planNeedDeep = false;
 
   try {
     if (!input.request.access?.userId) {
@@ -40,8 +58,10 @@ export async function runAnswerPipeline(
       access: input.request.access,
       text: input.request.userText,
     });
+    planNeedInternal = plan.needInternalKnowledge;
+    planNeedWeb = plan.needWeb;
+    planNeedDeep = plan.needDeepResearch;
 
-    // Hard security invariants.
     if (plan.includePrivateConversations !== false) {
       throw new Error("PRIVATE_CONVERSATION_RETRIEVAL_FORBIDDEN");
     }
@@ -62,15 +82,16 @@ export async function runAnswerPipeline(
       collected.push(...items);
     }
 
+    // Deep research already runs search + optional page fetch.
+    // Do not double-call Tavily via the shallow web retriever.
     failureStage = "retrieval_web";
-    if (plan.needWeb) {
+    if (plan.needWeb && !plan.needDeepResearch) {
       retrievalTypes.push("web");
       const items = await deps.web.retrieve({
         access: input.request.access,
         plan,
         query: input.request.userText,
       });
-      // Disconnected providers MUST return [] — never invent hits.
       collected.push(...items);
     }
 
@@ -86,6 +107,12 @@ export async function runAnswerPipeline(
     }
 
     retrievedCount = collected.length;
+    const internalCount = collected.filter(isInternal).length;
+    const webCount = collected.filter(isWeb).length;
+    const researchCount = collected.filter(isResearch).length;
+    const webStats = plan.needDeepResearch
+      ? readRetrieverStats(deps.research)
+      : readRetrieverStats(deps.web);
 
     failureStage = "context";
     const context = deps.contextBuilder.build({
@@ -111,7 +138,17 @@ export async function runAnswerPipeline(
       intent,
     });
 
-    deps.onTrace?.({
+    answer.retrieval = {
+      internalCount,
+      webCount,
+      researchCount,
+      contextCount: context.items.length,
+      citationCount: answer.citations.length,
+      sanitizedQueryCount: webStats.sanitizedQueryCount,
+      pagesFetched: webStats.pagesFetched,
+    };
+
+    const trace = {
       intent: intent.intent,
       retrievalTypes,
       retrievedCount,
@@ -124,11 +161,23 @@ export async function runAnswerPipeline(
       latencyMs: Date.now() - started,
       failureStage: null,
       success: true,
-    });
+      internalCount,
+      webCount,
+      researchCount,
+      contextCount: context.items.length,
+      citationCount: answer.citations.length,
+      sanitizedQueryCount: webStats.sanitizedQueryCount,
+      pagesFetched: webStats.pagesFetched,
+      needInternal: plan.needInternalKnowledge,
+      needWeb: plan.needWeb,
+      needDeepResearch: plan.needDeepResearch,
+    };
+    recordAnswerDiagnostic(trace);
+    deps.onTrace?.(trace);
 
     return answer;
   } catch (err) {
-    deps.onTrace?.({
+    const failTrace = {
       intent: input.request.workflowHint ?? "general",
       retrievalTypes,
       retrievedCount,
@@ -136,7 +185,12 @@ export async function runAnswerPipeline(
       latencyMs: Date.now() - started,
       failureStage: failureStage ?? "unknown",
       success: false,
-    });
+      needInternal: planNeedInternal,
+      needWeb: planNeedWeb,
+      needDeepResearch: planNeedDeep,
+    };
+    recordAnswerDiagnostic(failTrace);
+    deps.onTrace?.(failTrace);
     throw err;
   }
 }

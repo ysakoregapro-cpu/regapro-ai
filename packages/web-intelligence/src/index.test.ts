@@ -25,6 +25,32 @@ describe("sanitizeExternalQuery", () => {
     expect(plan.sanitizedQueries.some((q) => /求人/.test(q))).toBe(true);
   });
 
+  it("does not hijack 人材市場 into compensation queries", () => {
+    const plan = sanitizeExternalQuery({
+      request:
+        "レガプロの通信事業について、現在の通信販売・人材市場の外部環境を分けて調査し根拠を付けて",
+      confidentialityLevel: "company",
+    });
+    expect(plan.removedSensitiveSignals).not.toContain("compensation");
+    expect(plan.sanitizedQueries.some((q) => /年収/.test(q))).toBe(false);
+    expect(plan.sanitizedQueries.some((q) => /人材市場|通信/.test(q))).toBe(
+      true,
+    );
+    expect(plan.externalTransmissionAllowed).toBe(true);
+  });
+
+  it("does not leak L2/L3 person names into external queries", () => {
+    const plan = sanitizeExternalQuery({
+      request: "酒匂さんの未公開評価と年収800万を市場と比較して",
+      confidentialityLevel: "people",
+    });
+    for (const q of plan.sanitizedQueries) {
+      expect(q).not.toMatch(/酒匂/);
+      expect(q).not.toMatch(/800/);
+      expect(q).not.toMatch(/未公開評価/);
+    }
+  });
+
   it("blocks PII from transmission", () => {
     const plan = sanitizeExternalQuery({
       request: "候補者のメールアドレス test@example.com で調べて",

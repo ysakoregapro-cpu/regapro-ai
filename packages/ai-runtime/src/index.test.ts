@@ -8,6 +8,7 @@ import {
   DefaultRetrievalPlanner,
   createDefaultAnswerPipelineDeps,
   runAnswerPipeline,
+  FallbackChainModelProvider,
   type KnowledgeSearchPort,
 } from "./index.js";
 import { DisconnectedEmbeddingProvider } from "@regapro/knowledge";
@@ -32,6 +33,14 @@ describe("RuleBasedIntentRouter", () => {
   it("routes workflow hints first", async () => {
     const d = await router.route({ text: "調べて", workflowHint: "task" });
     expect(d.intent).toBe("task");
+  });
+
+  it("does not lock routing on general workflow hint", async () => {
+    const d = await router.route({
+      text: "展示会を調べて",
+      workflowHint: "general",
+    });
+    expect(d.intent).toBe("web_search");
   });
 
   it("detects web / knowledge / task / document", async () => {
@@ -471,6 +480,215 @@ describe("AccessContext required at pipeline boundary", () => {
         },
       }),
     ).rejects.toThrow(/ACCESS_CONTEXT/);
+  });
+});
+
+describe("live E2E fixtures (mocked providers, no external APIs)", () => {
+  const CASE_A =
+    "レガプロで有料職業紹介事業を進める上で、現在把握している主な取り組みを整理して";
+  const CASE_B =
+    "レガプロの通信事業について、現在把握している社内状況と現在の通信販売・人材市場の外部環境を分けて調査し、来期に向けた組織上の課題と改善案を3案比較して。外部情報には根拠を付けて。";
+
+  const echoingModel = {
+    id: "rules-template" as const,
+    connected: true,
+    async generate(input: {
+      context: { items: { source: string; sourceType: string }[] };
+    }) {
+      return {
+        text: input.context.items.map((i) => i.source).join(" / ") || "確認できる情報がない",
+        confidence: 0.8,
+        providerId: "rules-template" as const,
+        modelId: "test-model",
+        connected: true,
+        limitations: [],
+      };
+    },
+  };
+
+  it("Case A: internal-only request does not call web and persists citations", async () => {
+    const router = new RuleBasedIntentRouter();
+    const planner = new DefaultRetrievalPlanner();
+    const intent = await router.route({ text: CASE_A, workflowHint: "general" });
+    expect(intent.intent).toBe("internal_knowledge");
+    const plan = planner.plan({ intent, access: access(), text: CASE_A });
+    expect(plan.needWeb).toBe(false);
+    expect(plan.needInternalKnowledge).toBe(true);
+    expect(plan.needCitations).toBe(true);
+
+    let webCalls = 0;
+    const deps = createDefaultAnswerPipelineDeps({
+      loadKnowledge: async () => [
+        {
+          id: "k-intro",
+          title: "有料職業紹介の社内メモ",
+          body: "公開済みの取り組みメモ",
+          confidentialityLevel: "company",
+          visibility: "organization",
+          ownerUserId: "sys",
+          published: true,
+        },
+      ],
+      web: {
+        id: "web-spy",
+        connected: true,
+        async retrieve() {
+          webCalls += 1;
+          return [];
+        },
+      },
+      model: echoingModel,
+    });
+
+    const answer = await runAnswerPipeline(deps, {
+      request: {
+        organizationId: "org-1",
+        userId: "user-1",
+        threadId: "th-a",
+        messageId: "m-a",
+        userText: CASE_A,
+        access: access(),
+        workflowHint: "general",
+        allowAuditBypass: false,
+      },
+    });
+
+    expect(webCalls).toBe(0);
+    expect(answer.retrieval.internalCount).toBeGreaterThan(0);
+    expect(answer.citations.length).toBeGreaterThan(0);
+    expect(answer.citations.every((c) => c.provenance === "internal")).toBe(true);
+    const reloaded = answer.citations.map((c) => ({ id: c.id, title: c.title }));
+    expect(reloaded.length).toBe(answer.citations.length);
+  });
+
+  it("Case B: internal + current web research keeps both provenances", async () => {
+    const router = new RuleBasedIntentRouter();
+    const planner = new DefaultRetrievalPlanner();
+    const intent = await router.route({ text: CASE_B });
+    expect(intent.intent).toBe("deep_research");
+    const plan = planner.plan({ intent, access: access(), text: CASE_B });
+    expect(plan.needInternalKnowledge).toBe(true);
+    expect(plan.needWeb).toBe(true);
+    expect(plan.needDeepResearch).toBe(true);
+    expect(plan.needCitations).toBe(true);
+
+    let webSearchExecuted = 0;
+    const deps = createDefaultAnswerPipelineDeps({
+      loadKnowledge: async () => [
+        {
+          id: "k-tel",
+          title: "通信事業の社内状況",
+          body: "社内で把握している通信事業メモ",
+          confidentialityLevel: "company",
+          visibility: "organization",
+          ownerUserId: "sys",
+          published: true,
+        },
+      ],
+      web: {
+        id: "web-spy",
+        connected: true,
+        async retrieve() {
+          throw new Error("shallow web must not run when deep research is on");
+        },
+      },
+      research: {
+        id: "research-spy",
+        connected: true,
+        async retrieve() {
+          webSearchExecuted += 1;
+          return [
+            {
+              id: "w1",
+              title: "公開市場レポート",
+              content: "通信販売市場の公開動向",
+              sourceType: "research" as const,
+              sourceId: "w1",
+              sourceUri: "https://example.com/market",
+              confidentialityLevel: "company" as const,
+              visibility: "organization" as const,
+              relevance: 0.9,
+              freshness: "2026-08-01T00:00:00.000Z",
+              excerpt: "公開動向",
+              domain: "example.com",
+              retrievedAt: "2026-08-16T00:00:00.000Z",
+              publishedAt: null,
+            },
+          ];
+        },
+      },
+      model: echoingModel,
+    });
+
+    const answer = await runAnswerPipeline(deps, {
+      request: {
+        organizationId: "org-1",
+        userId: "user-1",
+        threadId: "th-b",
+        messageId: "m-b",
+        userText: CASE_B,
+        access: access(),
+        workflowHint: null,
+        allowAuditBypass: false,
+      },
+    });
+
+    expect(webSearchExecuted).toBe(1);
+    expect(answer.retrieval.internalCount).toBeGreaterThan(0);
+    expect(answer.retrieval.researchCount).toBeGreaterThan(0);
+    expect(answer.retrieval.contextCount).toBeGreaterThan(1);
+    expect(answer.citations.length).toBeGreaterThan(0);
+    expect(answer.citations.some((c) => c.provenance === "internal")).toBe(true);
+    expect(answer.citations.some((c) => c.provenance === "web")).toBe(true);
+    expect(answer.usedInternalKnowledge).toBe(true);
+    expect(answer.usedWeb).toBe(true);
+  });
+
+  it("does not mix sample catalog when internal retrieval is empty", async () => {
+    const deps = createDefaultAnswerPipelineDeps({
+      model: echoingModel,
+    });
+    const answer = await runAnswerPipeline(deps, {
+      request: {
+        organizationId: "org-1",
+        userId: "user-1",
+        threadId: "th-empty",
+        messageId: null,
+        userText: CASE_A,
+        access: access(),
+        allowAuditBypass: false,
+      },
+    });
+    expect(answer.usedInternalKnowledge).toBe(false);
+    expect(answer.citations).toEqual([]);
+    expect(answer.text).not.toMatch(/求人票作成の標準手順/);
+  });
+
+  it("falls to honest fallback, never sample catalog, on provider failure", async () => {
+    const failing = {
+      id: "vercel-gateway" as const,
+      connected: true,
+      async generate() {
+        throw new Error("GATEWAY_HTTP_500");
+      },
+    };
+    const deps = createDefaultAnswerPipelineDeps({
+      model: new FallbackChainModelProvider([failing]),
+    });
+    const answer = await runAnswerPipeline(deps, {
+      request: {
+        organizationId: "org-1",
+        userId: "user-1",
+        threadId: "th-fail",
+        messageId: null,
+        userText: CASE_A,
+        access: access(),
+        allowAuditBypass: false,
+      },
+    });
+    expect(answer.model.providerId).toBe("honest-fallback");
+    expect(answer.text).not.toMatch(/求人票作成の標準手順/);
+    expect(answer.text).not.toMatch(/候補A：現場経験/);
   });
 });
 

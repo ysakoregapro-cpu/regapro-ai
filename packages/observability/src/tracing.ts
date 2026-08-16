@@ -10,7 +10,15 @@ export type RuntimeTraceRecord = {
   actualModelId?: string;
   providerRoute?: string;
   fallbackCount?: number;
-  retrievalCounts?: { internal: number; web: number; research: number };
+  retrievalCounts?: {
+    internal: number;
+    web: number;
+    research: number;
+    context?: number;
+    citations?: number;
+    sanitizedQueries?: number;
+    pagesFetched?: number;
+  };
   webProvider?: string | null;
   latencyMs?: number;
   tokenUsage?: {

@@ -74,6 +74,9 @@ export type RetrievedItem = {
   relevance: number;
   freshness: string | null;
   excerpt: string;
+  domain?: string | null;
+  publishedAt?: string | null;
+  retrievedAt?: string | null;
 };
 
 export type Citation = {
@@ -85,6 +88,10 @@ export type Citation = {
   excerpt: string;
   confidentialityLevel: ConfidentialityLevel;
   relevance: number;
+  provenance: "internal" | "web";
+  domain?: string | null;
+  retrievedAt?: string | null;
+  publishedAt?: string | null;
 };
 
 export type AIContextItem = {
@@ -144,6 +151,15 @@ export type AnswerResult = {
   confidence: number;
   limitations: string[];
   generatedAt: string;
+  retrieval: {
+    internalCount: number;
+    webCount: number;
+    researchCount: number;
+    contextCount: number;
+    citationCount: number;
+    sanitizedQueryCount: number;
+    pagesFetched: number;
+  };
 };
 
 export type PipelineTrace = {
@@ -160,6 +176,16 @@ export type PipelineTrace = {
   latencyMs: number;
   failureStage: string | null;
   success?: boolean;
+  internalCount?: number;
+  webCount?: number;
+  researchCount?: number;
+  contextCount?: number;
+  citationCount?: number;
+  sanitizedQueryCount?: number;
+  pagesFetched?: number;
+  needInternal?: boolean;
+  needWeb?: boolean;
+  needDeepResearch?: boolean;
 };
 
 export type WorkflowAnswerHints = {

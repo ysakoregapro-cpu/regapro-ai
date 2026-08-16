@@ -24,7 +24,7 @@ export function workflowToAnswerIntent(
     case "code":
       return "code";
     case "general":
-      return "general";
+      return null;
     default:
       return null;
   }

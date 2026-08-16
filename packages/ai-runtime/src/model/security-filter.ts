@@ -25,9 +25,12 @@ function isElevated(level: ConfidentialityLevel): boolean {
   return level === "people" || level === "executive";
 }
 
+function isWeb(item: AIContextItem): boolean {
+  return item.sourceType === "web" || item.sourceType === "research";
+}
+
 /**
  * Filter BEFORE the LLM call. Never "retrieve all then ask the model to hide it".
- * Clearance is taken only from AccessContext — never from request body.
  */
 export function filterOutboundLlmPayload(input: {
   access: AccessContext;
@@ -35,24 +38,33 @@ export function filterOutboundLlmPayload(input: {
   context: AIContext;
 }): OutboundLlmPayload {
   const ceiling = input.context.ceiling;
-  const elevated = isElevated(ceiling) || isElevated(input.access.threadConfidentialityLevel);
+  const elevated =
+    isElevated(ceiling) || isElevated(input.access.threadConfidentialityLevel);
 
-  const items = input.context.items.filter((item) => {
-    if (item.sourceType === "conversation") return false;
-    return true;
-  });
+  const items = input.context.items.filter((item) => item.sourceType !== "conversation");
+  const internal = items.filter((i) => !isWeb(i));
+  const web = items.filter(isWeb);
 
-  const provenance = items
-    .map((i, idx) => {
-      const kind = i.sourceType === "web" || i.sourceType === "research" ? "web" : "internal";
-      return `[#${idx + 1} ${kind} ${i.source}] ${redact(i.content).slice(0, 1200)}`;
-    })
-    .join("\n\n");
+  const formatBlock = (label: string, rows: AIContextItem[]) => {
+    if (rows.length === 0) {
+      return `${label}: 0件。この区分の事実は補完しないでください。`;
+    }
+    return [
+      `${label}: ${rows.length}件`,
+      ...rows.map((i, idx) => {
+        const uri = i.citation.uri ? ` ${i.citation.uri}` : "";
+        return `[#${idx + 1} ${i.source}${uri}] ${redact(i.content).slice(0, 1200)}`;
+      }),
+    ].join("\n");
+  };
 
   const system = [
     "あなたは RegaloProfessional の業務アシスタントです。",
-    "与えられた出典だけを根拠にしてください。出典に無い事実を作らないでください。",
-    "検索したと主張せず、渡された internal / web 出典を区別してください。",
+    "会社固有の事実は「社内出典」に書かれた内容だけを使ってください。無い事実は一般知識で補完しないでください。",
+    "社内出典が0件なら、社内の現状は「確認できる情報がない」と明記してください。",
+    "外部出典がある場合は、社内が0件でも外部に基づいて公開情報を整理してください。社内事実と混同しないでください。",
+    "「出典：internal」のような固定ラベルを本文に書かないでください。根拠は渡された出典のタイトルやURLで示してください。",
+    "検索した・調べたと主張せず、渡された出典だけを使ってください。",
     elevated
       ? "この依頼は社内の取り扱い区分が高いため、推測で機密を補完してはいけません。"
       : "",
@@ -60,9 +72,11 @@ export function filterOutboundLlmPayload(input: {
     .filter(Boolean)
     .join("\n");
 
-  const user = [`依頼:\n${redact(input.userText)}`, provenance ? `出典:\n${provenance}` : ""]
-    .filter(Boolean)
-    .join("\n\n");
+  const user = [
+    `依頼:\n${redact(input.userText)}`,
+    formatBlock("社内出典", internal),
+    formatBlock("外部出典", web),
+  ].join("\n\n");
 
   return {
     system,

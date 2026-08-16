@@ -8,6 +8,13 @@ export { DefaultAnswerComposer } from "./answer-composer.js";
 export { runAnswerPipeline } from "./pipeline.js";
 export { createAnswerRuntimeLogger } from "./observability.js";
 export {
+  recordAnswerDiagnostic,
+  listAnswerDiagnostics,
+  type AnswerDiagnosticEvent,
+} from "./diagnostics.js";
+export { extractRetrievalSignals } from "./retrieval-signals.js";
+export { readRetrieverStats } from "./retrievers/web-intelligence.js";
+export {
   BasicInternalKnowledgeRetriever,
   DisconnectedWebRetriever,
   DisconnectedResearchRetriever,

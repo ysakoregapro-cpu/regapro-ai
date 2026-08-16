@@ -1,5 +1,5 @@
 import { PageHeader, ConnectionStatus, StatusBadge } from "@/components/ui/primitives";
-import { getProcessUsageSnapshot } from "@regapro/ai-runtime";
+import { getProcessUsageSnapshot, listAnswerDiagnostics } from "@regapro/ai-runtime";
 import { getDataMode, isDevSampleMode } from "@/lib/supabase/env";
 import { cloudRuntimeStatus } from "@/lib/application/ai-runtime-factory";
 
@@ -11,6 +11,7 @@ export default function DiagnosticsPage() {
   const sample = isDevSampleMode();
   const runtime = cloudRuntimeStatus();
   const usage = getProcessUsageSnapshot();
+  const diagnostics = listAnswerDiagnostics();
   return (
     <div className="space-y-6">
       <PageHeader
@@ -95,6 +96,47 @@ export default function DiagnosticsPage() {
           LLM 呼び出し {usage.llmCalls} 回 / 推定トークン {usage.tokens} /
           失敗 {usage.failures} 回。料金そのものは一般画面に出しません。
         </p>
+      </section>
+      <section className="space-y-2">
+        <h2 className="text-[14px] font-semibold">直近の回答経路（件数のみ）</h2>
+        {diagnostics.length === 0 ? (
+          <p className="text-[13px] text-text-secondary">
+            このプロセスでまだ回答診断はありません。本文や機密は記録しません。
+          </p>
+        ) : (
+          <table className="w-full text-left text-[12px]">
+            <thead>
+              <tr className="border-b border-border text-text-secondary">
+                <th className="py-1 font-medium">intent</th>
+                <th className="py-1 font-medium">internal</th>
+                <th className="py-1 font-medium">web</th>
+                <th className="py-1 font-medium">context</th>
+                <th className="py-1 font-medium">cite</th>
+                <th className="py-1 font-medium">persist</th>
+                <th className="py-1 font-medium">model</th>
+              </tr>
+            </thead>
+            <tbody>
+              {diagnostics.slice(0, 8).map((d) => (
+                <tr key={d.at} className="border-b border-border">
+                  <td className="py-1">{d.intent}</td>
+                  <td className="py-1">{d.internalCount}</td>
+                  <td className="py-1">
+                    {d.webCount + d.researchCount}
+                    {d.sanitizedQueryCount ? ` / q${d.sanitizedQueryCount}` : ""}
+                    {d.pagesFetched ? ` / p${d.pagesFetched}` : ""}
+                  </td>
+                  <td className="py-1">{d.contextCount}</td>
+                  <td className="py-1">{d.citationCount}</td>
+                  <td className="py-1">{d.citationPersistCount}</td>
+                  <td className="py-1">
+                    {d.modelRole ?? "—"} / {d.modelProvider}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
       <section className="space-y-2">
         <h2 className="text-[14px] font-semibold">注意</h2>

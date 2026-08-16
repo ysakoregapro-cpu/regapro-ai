@@ -70,6 +70,13 @@ export class DefaultContextBuilder implements ContextBuilder {
           excerpt: item.excerpt.slice(0, 240),
           confidentialityLevel: item.confidentialityLevel,
           relevance: item.relevance,
+          provenance:
+            item.sourceType === "web" || item.sourceType === "research"
+              ? ("web" as const)
+              : ("internal" as const),
+          domain: item.domain ?? null,
+          retrievedAt: item.retrievedAt ?? null,
+          publishedAt: item.publishedAt ?? null,
         },
       });
     }

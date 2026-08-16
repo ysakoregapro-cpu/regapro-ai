@@ -27,6 +27,7 @@ import {
 import { listTasks, projectName } from "@/lib/application/catalog-service";
 import { interpretTaskUtterance } from "@/lib/application/task-interpreter";
 import { cn } from "@/lib/cn";
+import { toAssistantMessages, citationsForRightPane } from "@/lib/application/assistant-message-view";
 import { isDevSampleMode } from "@/lib/supabase/env";
 import { ASSISTANT_TOOLS } from "@/lib/navigation";
 import type { ConfidentialityLevel } from "@regapro/shared";
@@ -38,7 +39,14 @@ type LocalMessage = {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
-  citations?: readonly { id: string; title: string; source: string }[];
+  citations?: readonly {
+    id: string;
+    title: string;
+    source: string;
+    excerpt?: string | null;
+    uri?: string | null;
+    provenance?: "internal" | "web";
+  }[];
 };
 
 type ArtifactItem = {
@@ -52,17 +60,9 @@ type ArtifactItem = {
 type RightTab = "citations" | "tasks" | "artifacts";
 
 function toLocalMessages(
-  messages: { id: string; threadId: string; role: string; content: string; createdAt: string }[],
+  messages: Parameters<typeof toAssistantMessages>[0],
 ): LocalMessage[] {
-  return messages
-    .filter((m) => m.role === "user" || m.role === "assistant")
-    .map((m) => ({
-      id: m.id,
-      threadId: m.threadId,
-      role: m.role as "user" | "assistant",
-      content: m.content,
-      createdAt: m.createdAt,
-    }));
+  return toAssistantMessages(messages);
 }
 
 export default function AssistantPage() {
@@ -318,14 +318,10 @@ export default function AssistantPage() {
   }, [threadId, messages, refreshResearchPane, refreshArtifactsPane]);
 
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-  const citations =
-    researchCitations.length > 0
-      ? researchCitations.map((c) => ({
-          id: c.id,
-          title: c.title,
-          source: c.publisher + (c.url ? ` · ${c.url}` : ""),
-        }))
-      : (lastAssistant?.citations ?? []);
+  const citations = citationsForRightPane({
+    messageCitations: lastAssistant?.citations ?? [],
+    researchCitations,
+  });
   const relatedTasks = useMemo(() => {
     if (!threadProjectId || !isDevSampleMode()) return [];
     return listTasks("all").filter((t) => t.projectId === threadProjectId).slice(0, 5);
@@ -737,7 +733,6 @@ export default function AssistantPage() {
         <RightPane
           tab={rightTab}
           citations={citations}
-          researchCitations={researchCitations}
           tasks={relatedTasks}
           artifacts={relatedArtifacts}
           demoNotice={demoNotice}
@@ -1074,61 +1069,54 @@ function Composer({
 function RightPane({
   tab,
   citations,
-  researchCitations,
   tasks,
   artifacts,
   demoNotice,
 }: {
   tab: RightTab;
-  citations: readonly { id: string; title: string; source: string }[];
-  researchCitations?: {
+  citations: readonly {
     id: string;
     title: string;
-    publisher: string;
-    url: string | null;
-    excerpt: string;
-    confidence: number;
-    confidentialityLevel: ConfidentialityLevel;
+    source: string;
+    excerpt?: string | null;
+    uri?: string | null;
+    provenance?: "internal" | "web";
   }[];
   tasks: ReturnType<typeof listTasks>;
   artifacts: ArtifactItem[];
   demoNotice?: string | null;
 }) {
-  const research = researchCitations ?? [];
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
       {tab === "citations" ? (
-        research.length > 0 ? (
-          <div className="space-y-3 px-1">
-            {demoNotice ? (
-              <p className="text-[11px] text-text-muted">{demoNotice}</p>
-            ) : null}
-            {research.map((c) => (
-              <div key={c.id} className="border-b border-border pb-3 last:border-0">
-                <p className="text-[13px] font-medium">{c.title}</p>
-                <p className="mt-0.5 text-[11px] text-text-secondary">
-                  {c.publisher}
-                  {c.url ? ` · ${c.url}` : " · URLなし（確認用）"}
-                </p>
-                <p className="mt-1 text-[12px] text-text-secondary">{c.excerpt}</p>
-                <p className="mt-1 text-[11px] text-text-muted">
-                  信頼度 {(c.confidence * 100).toFixed(0)}% ·{" "}
-                  {CONFIDENTIALITY_LABELS[c.confidentialityLevel]}
-                </p>
-              </div>
-            ))}
-          </div>
-        ) : citations.length === 0 ? (
+        citations.length === 0 ? (
           <p className="px-1 py-4 text-[12px] text-text-secondary">引用はまだありません</p>
         ) : (
-          citations.map((c) => (
-            <ListRow key={c.id} className="px-1">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px]">{c.title}</p>
-                <StatusBadge>{c.source}</StatusBadge>
-              </div>
-            </ListRow>
-          ))
+          <div className="space-y-1">
+            {demoNotice ? (
+              <p className="px-1 text-[11px] text-text-muted">{demoNotice}</p>
+            ) : null}
+            {citations.map((c) => (
+              <ListRow key={c.id} className="px-1">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px]">{c.title}</p>
+                  <StatusBadge>
+                    {c.provenance === "web"
+                      ? c.source || "外部情報"
+                      : c.provenance === "internal"
+                        ? "社内情報"
+                        : c.source}
+                  </StatusBadge>
+                  {c.uri ? (
+                    <p className="mt-0.5 truncate text-[11px] text-text-secondary">{c.uri}</p>
+                  ) : null}
+                  {c.excerpt ? (
+                    <p className="mt-1 text-[12px] text-text-secondary">{c.excerpt}</p>
+                  ) : null}
+                </div>
+              </ListRow>
+            ))}
+          </div>
         )
       ) : null}
 

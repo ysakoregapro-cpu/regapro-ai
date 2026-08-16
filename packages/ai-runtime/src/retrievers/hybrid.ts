@@ -54,6 +54,15 @@ function levelFromDb(n: number): ConfidentialityLevel {
   return confidentialityFromRank(n);
 }
 
+function freshnessBoost(updatedAt: string | null): number {
+  if (!updatedAt) return 1;
+  const days = (Date.now() - Date.parse(updatedAt)) / 86_400_000;
+  if (!Number.isFinite(days)) return 1;
+  if (days < 90) return 1.2;
+  if (days < 365) return 1;
+  return 0.85;
+}
+
 function toRetrieved(
   hit: HybridRow,
 ): RetrievedItem {
@@ -68,7 +77,7 @@ function toRetrieved(
     confidentialityLevel: levelFromDb(hit.confidentialityLevel),
     visibility: (hit.visibility as Visibility) || "organization",
     ownerUserId: hit.ownerUserId ?? undefined,
-    relevance: Math.min(1, hit.relevance),
+    relevance: Math.min(1, hit.relevance * freshnessBoost(hit.updatedAt)),
     freshness: hit.updatedAt,
     excerpt,
   };

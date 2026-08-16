@@ -35,6 +35,8 @@ export type StoredMessageCitation = {
   title: string;
   source: string;
   excerpt?: string | null;
+  uri?: string | null;
+  provenance?: "internal" | "web";
   chunkId?: string | null;
   documentId?: string | null;
 };

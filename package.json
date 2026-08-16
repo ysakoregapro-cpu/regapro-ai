@@ -21,7 +21,8 @@
     "db:verify-live": "node scripts/verify-live-connection.mjs",
     "db:test-rls": "node scripts/rls-integration/run.mjs",
     "smoke:supabase-mode": "node scripts/smoke-supabase-mode.mjs",
-    "smoke:cloud-runtime": "node --env-file=apps/web/.env.local scripts/smoke-cloud-runtime.mjs"
+    "smoke:cloud-runtime": "node --env-file=apps/web/.env.local scripts/smoke-cloud-runtime.mjs",
+    "e2e:answer-pipeline": "node --env-file=apps/web/.env.local scripts/e2e-answer-pipeline.mjs"
   },
   "engines": {
     "node": ">=24.0.0"

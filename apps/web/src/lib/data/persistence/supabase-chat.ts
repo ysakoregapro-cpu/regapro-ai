@@ -140,6 +140,8 @@ export function createSupabaseChatPersistence(client: Client): ChatPersistence {
               title: c.title,
               source: c.source,
               excerpt: c.excerpt,
+              uri: c.uri,
+              provenance: c.provenance,
               chunkId: c.chunkId,
               documentId: c.documentId,
             }));

@@ -1,17 +1,27 @@
 import type { AnswerComposer } from "./ports.js";
-import type { AnswerResult } from "./types.js";
+import type { AnswerResult, SourceType } from "./types.js";
 import type { ModelGenerateOutput } from "./ports.js";
+
+function provenanceOf(sourceType: SourceType): "internal" | "web" {
+  return sourceType === "web" || sourceType === "research" ? "web" : "internal";
+}
 
 export class DefaultAnswerComposer implements AnswerComposer {
   compose(input: {
     model: ModelGenerateOutput;
-    context: { items: { citation: AnswerResult["citations"][number]; sourceType?: AnswerResult["citations"][number]["sourceType"] }[] };
+    context: {
+      items: {
+        citation: AnswerResult["citations"][number];
+        sourceType?: SourceType;
+      }[];
+    };
     plan: AnswerResult["retrievalPlan"];
     intent: AnswerResult["intent"];
   }): AnswerResult {
-    const citations = input.plan.needCitations
-      ? input.context.items.map((i) => i.citation)
-      : [];
+    const citations = input.context.items.map((i) => ({
+      ...i.citation,
+      provenance: i.citation.provenance ?? provenanceOf(i.citation.sourceType),
+    }));
 
     const usedInternalKnowledge = input.context.items.some(
       (i) =>
@@ -42,6 +52,15 @@ export class DefaultAnswerComposer implements AnswerComposer {
       confidence: input.model.confidence,
       limitations: input.model.limitations,
       generatedAt: new Date().toISOString(),
+      retrieval: {
+        internalCount: 0,
+        webCount: 0,
+        researchCount: 0,
+        contextCount: input.context.items.length,
+        citationCount: citations.length,
+        sanitizedQueryCount: 0,
+        pagesFetched: 0,
+      },
     };
   }
 }

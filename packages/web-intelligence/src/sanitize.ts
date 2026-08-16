@@ -66,7 +66,7 @@ export function sanitizeExternalQuery(input: SanitizeInput): SanitizedQueryPlan 
 
   const queries: string[] = [];
   const wantsMarketPay =
-    /平均給与|市場|相場|年収|給与相場|適正給与/.test(originalRequest) ||
+    /平均給与|平均年収|給与相場|適正給与|年収の相場|年収相場/.test(originalRequest) ||
     removed.includes("compensation");
   const wantsJobs = /求人|転職|採用市場|向く仕事/.test(originalRequest);
 

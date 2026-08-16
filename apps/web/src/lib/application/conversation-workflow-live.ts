@@ -860,6 +860,8 @@ async function writeAssistantReply(
         title: c.title,
         source: c.sourceType,
         excerpt: c.excerpt,
+        uri: c.uri,
+        provenance: c.provenance,
         documentId: c.sourceId,
       })),
     },
@@ -872,9 +874,29 @@ async function writeAssistantReply(
       "@/lib/application/citation-persistence"
     );
     const client = await createServerSupabaseClient();
-    await persistMessageCitations(client, {
+    const persisted = await persistMessageCitations(client, {
       messageId,
       citations: answer.citations,
+    });
+    const { recordAnswerDiagnostic } = await import("@regapro/ai-runtime");
+    recordAnswerDiagnostic({
+      intent: answer.intent.intent,
+      needInternal: answer.retrievalPlan.needInternalKnowledge,
+      needWeb: answer.retrievalPlan.needWeb,
+      needDeepResearch: answer.retrievalPlan.needDeepResearch,
+      internalCount: answer.retrieval.internalCount,
+      webCount: answer.retrieval.webCount,
+      researchCount: answer.retrieval.researchCount,
+      contextCount: answer.retrieval.contextCount,
+      citationCount: answer.citations.length,
+      citationPersistCount: persisted,
+      sanitizedQueryCount: answer.retrieval.sanitizedQueryCount,
+      pagesFetched: answer.retrieval.pagesFetched,
+      modelRole: answer.model.role ?? null,
+      modelId: answer.model.modelId,
+      modelProvider: answer.model.providerId,
+      success: true,
+      failureStage: null,
     });
   } catch (err) {
     console.error("[citations] write skipped", err);
