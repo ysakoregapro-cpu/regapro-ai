@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { WorkflowType } from "@/lib/application/workflow-types";
 
 export async function startWorkflowClient(input: {
@@ -40,6 +40,46 @@ export async function startWorkflowClient(input: {
     threadId: data.threadId,
     toolId: data.toolId ?? null,
   };
+}
+
+/** Creates an empty general thread and navigates to it. */
+export function StartNewChatButton({
+  className,
+  label = "新しく依頼する",
+}: {
+  className?: string;
+  label?: string;
+}) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const creatingRef = useRef(false);
+
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      className={
+        className ??
+        "inline-flex h-9 items-center rounded-md bg-accent px-3 text-[13px] font-medium text-accent-fg hover:bg-accent-hover disabled:opacity-60"
+      }
+      onClick={() => {
+        if (creatingRef.current || pending) return;
+        creatingRef.current = true;
+        setPending(true);
+        void (async () => {
+          try {
+            const result = await startWorkflowClient({ workflowType: "general" });
+            if (result.ok) router.push(result.redirectTo);
+            else setPending(false);
+          } finally {
+            creatingRef.current = false;
+          }
+        })();
+      }}
+    >
+      {pending ? "作成中…" : label}
+    </button>
+  );
 }
 
 /** Button that starts a research conversation via the shared workflow. */

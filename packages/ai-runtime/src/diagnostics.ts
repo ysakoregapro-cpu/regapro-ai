@@ -18,11 +18,15 @@ export type AnswerDiagnosticEvent = {
   citationPersistCount: number;
   sanitizedQueryCount: number;
   pagesFetched: number;
+  browserSessions: number;
   modelRole: string | null;
   modelId: string | null;
   modelProvider: string;
   success: boolean;
   failureStage: string | null;
+  fallbackReason: string | null;
+  providerRequestResult: "ok" | "fallback" | "failed";
+  modelConnected: boolean;
 };
 
 const RING = 20;
@@ -41,11 +45,15 @@ const EMPTY: Omit<AnswerDiagnosticEvent, "at"> = {
   citationPersistCount: 0,
   sanitizedQueryCount: 0,
   pagesFetched: 0,
+  browserSessions: 0,
   modelRole: null,
   modelId: null,
   modelProvider: "honest-fallback",
   success: false,
   failureStage: null,
+  fallbackReason: null,
+  providerRequestResult: "failed",
+  modelConnected: false,
 };
 
 export function recordAnswerDiagnostic(
@@ -82,10 +90,17 @@ export function diagnosticFromTrace(
     citationPersistCount: extras?.citationPersistCount ?? 0,
     sanitizedQueryCount: trace.sanitizedQueryCount ?? 0,
     pagesFetched: trace.pagesFetched ?? 0,
+    browserSessions: extras?.browserSessions ?? trace.browserSessions ?? 0,
     modelRole: trace.selectedModelRole ?? null,
     modelId: trace.actualModelId ?? null,
     modelProvider: trace.modelProvider,
     success: trace.success !== false && !trace.failureStage,
     failureStage: trace.failureStage,
+    fallbackReason: extras?.fallbackReason ?? trace.fallbackReason ?? null,
+    providerRequestResult:
+      extras?.providerRequestResult ??
+      trace.providerRequestResult ??
+      (trace.modelProvider === "honest-fallback" ? "fallback" : "ok"),
+    modelConnected: extras?.modelConnected ?? trace.modelConnected ?? false,
   };
 }

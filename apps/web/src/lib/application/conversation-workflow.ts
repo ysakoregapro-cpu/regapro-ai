@@ -1,8 +1,6 @@
 import type { ConfidentialityLevel, Visibility } from "@regapro/shared";
 import {
   CONFIDENTIALITY_LABELS,
-  compareConfidentiality,
-  maxConfidentiality,
 } from "@regapro/shared";
 import {
   canAssignConfidentialityLevel,
@@ -79,7 +77,7 @@ export async function startConversationWorkflow(
     }
   }
 
-  let level: ConfidentialityLevel = input.confidentialityLevel ?? "company";
+  const level: ConfidentialityLevel = input.confidentialityLevel ?? "company";
   if (!canAssignConfidentialityLevel(session.access, level)) {
     return {
       ok: false,
@@ -101,26 +99,7 @@ export async function startConversationWorkflow(
   if (content) {
     const classification = classifySensitiveContent(content);
     classificationSignals = classification.matchedSignals;
-    if (
-      compareConfidentiality(classification.suggestedLevel, level) > 0 &&
-      !canAssignConfidentialityLevel(session.access, classification.suggestedLevel)
-    ) {
-      return {
-        ok: false,
-        code: "PERMISSION_DENIED",
-        message:
-          "この内容は現在の権限では扱えません。所属の管理者へ相談してください。",
-        restoreContent: content,
-        suggestedLevel: classification.suggestedLevel,
-      };
-    }
-    // Raise if classification suggests higher and user can
-    if (
-      compareConfidentiality(classification.suggestedLevel, level) > 0 &&
-      canAssignConfidentialityLevel(session.access, classification.suggestedLevel)
-    ) {
-      level = maxConfidentiality(level, classification.suggestedLevel);
-    }
+    // Keep requested thread level. Topic words (採用・求職者など) are not clearance.
   }
 
   const title = content

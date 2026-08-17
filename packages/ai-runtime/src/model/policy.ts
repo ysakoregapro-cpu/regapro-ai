@@ -57,7 +57,7 @@ const RULES: RouteRule[] = [
       s.simpleLookup &&
       s.hasInternalEvidence &&
       (s.intent === "internal_knowledge" || s.intent === "general"),
-    route: { role: null, skipLlm: true, secondaryRole: "fast" },
+    route: { role: "main", skipLlm: false, secondaryRole: "fast" },
   },
   {
     id: "fast-structure",

@@ -85,25 +85,34 @@ export async function runAnswerPipeline(
     // Deep research already runs search + optional page fetch.
     // Do not double-call Tavily via the shallow web retriever.
     failureStage = "retrieval_web";
+    let webError: string | null = null;
     if (plan.needWeb && !plan.needDeepResearch) {
       retrievalTypes.push("web");
-      const items = await deps.web.retrieve({
-        access: input.request.access,
-        plan,
-        query: input.request.userText,
-      });
-      collected.push(...items);
+      try {
+        const items = await deps.web.retrieve({
+          access: input.request.access,
+          plan,
+          query: input.request.userText,
+        });
+        collected.push(...items);
+      } catch (err) {
+        webError = err instanceof Error ? err.message : "WEB_SEARCH_FAILED";
+      }
     }
 
     failureStage = "retrieval_research";
     if (plan.needDeepResearch) {
       retrievalTypes.push("research");
-      const items = await deps.research.retrieve({
-        access: input.request.access,
-        plan,
-        query: input.request.userText,
-      });
-      collected.push(...items);
+      try {
+        const items = await deps.research.retrieve({
+          access: input.request.access,
+          plan,
+          query: input.request.userText,
+        });
+        collected.push(...items);
+      } catch (err) {
+        webError = err instanceof Error ? err.message : "WEB_RESEARCH_FAILED";
+      }
     }
 
     retrievedCount = collected.length;
@@ -137,6 +146,16 @@ export async function runAnswerPipeline(
       plan,
       intent,
     });
+    if (webError) {
+      const reason =
+        webError === "WEB_SEARCH_UNCONFIGURED"
+          ? "Web検索が未接続のため、外部調査は実行していません。"
+          : `Web検索を実行できませんでした（${webError.slice(0, 80)}）。検索したようには装っていません。`;
+      answer.limitations = [...answer.limitations, reason];
+      if (!answer.text.includes(reason)) {
+        answer.text = `${answer.text}\n\n${reason}`.trim();
+      }
+    }
 
     answer.retrieval = {
       internalCount,
@@ -146,8 +165,11 @@ export async function runAnswerPipeline(
       citationCount: answer.citations.length,
       sanitizedQueryCount: webStats.sanitizedQueryCount,
       pagesFetched: webStats.pagesFetched,
+      browserSessions: webStats.browserSessions,
     };
 
+    const usedFallback =
+      modelOut.providerId === "honest-fallback" || (modelOut.fallbackCount ?? 0) > 0;
     const trace = {
       intent: intent.intent,
       retrievalTypes,
@@ -168,9 +190,21 @@ export async function runAnswerPipeline(
       citationCount: answer.citations.length,
       sanitizedQueryCount: webStats.sanitizedQueryCount,
       pagesFetched: webStats.pagesFetched,
+      browserSessions: webStats.browserSessions,
       needInternal: plan.needInternalKnowledge,
       needWeb: plan.needWeb,
       needDeepResearch: plan.needDeepResearch,
+      modelConnected: modelOut.connected,
+      providerRequestResult: (usedFallback
+        ? modelOut.connected
+          ? "fallback"
+          : "failed"
+        : "ok") as "ok" | "fallback" | "failed",
+      fallbackReason: usedFallback
+        ? modelOut.connected
+          ? "provider_request_failed"
+          : "no_connected_provider"
+        : null,
     };
     recordAnswerDiagnostic(trace);
     deps.onTrace?.(trace);
@@ -188,6 +222,9 @@ export async function runAnswerPipeline(
       needInternal: planNeedInternal,
       needWeb: planNeedWeb,
       needDeepResearch: planNeedDeep,
+      modelConnected: deps.model.connected,
+      providerRequestResult: "failed" as const,
+      fallbackReason: failureStage ?? "unknown",
     };
     recordAnswerDiagnostic(failTrace);
     deps.onTrace?.(failTrace);

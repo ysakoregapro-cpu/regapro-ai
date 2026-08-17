@@ -260,7 +260,7 @@ export function startChatFromHome(input: StartChatInput): StartChatResult {
   }
 
   const classification = classifySensitiveContent(content);
-  let level = input.requestedLevel;
+  const level = input.requestedLevel;
 
   if (!canAssignConfidentialityLevel(session.access, level)) {
     return {
@@ -274,52 +274,8 @@ export function startChatFromHome(input: StartChatInput): StartChatResult {
     };
   }
 
-  if (
-    compareConfidentiality(classification.suggestedLevel, level) > 0 &&
-    !input.confirmRaise
-  ) {
-    if (
-      !canAssignConfidentialityLevel(
-        session.access,
-        classification.suggestedLevel,
-      )
-    ) {
-      return {
-        ok: false,
-        code: "PERMISSION_DENIED",
-        message:
-          "この内容は現在の権限では扱えません。所属の管理者へ相談してください。",
-        restoreContent: content,
-        classification,
-        suggestedLevel: classification.suggestedLevel,
-      };
-    }
-    return {
-      ok: false,
-      code: "NEEDS_CONFIRMATION",
-      message:
-        classification.suggestedLevel === "executive"
-          ? `給与・評価等の経営情報を含む可能性があります。情報区分を「${CONFIDENTIALITY_LABELS.executive}」へ変更して続けますか？`
-          : `人事情報を含む可能性があります。情報区分を「${CONFIDENTIALITY_LABELS.people}」へ変更して続けますか？`,
-      restoreContent: content,
-      classification,
-      suggestedLevel: classification.suggestedLevel,
-    };
-  }
-
-  if (input.confirmRaise && classification.suggestedLevel) {
-    level = maxConfidentiality(level, classification.suggestedLevel);
-    if (!canAssignConfidentialityLevel(session.access, level)) {
-      return {
-        ok: false,
-        code: "PERMISSION_DENIED",
-        message:
-          "この内容は現在の権限では扱えません。所属の管理者へ相談してください。",
-        restoreContent: content,
-        classification,
-      };
-    }
-  }
+  // Domain/topic words must not raise thread clearance. Retrieve at the
+  // requested AccessContext; RLS already drops out-of-ceiling knowledge.
 
   const now = new Date().toISOString();
   const threadId = newId();

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { __resetChatStoreForTests } from "@/lib/application/chat-service";
+import { __resetChatStoreForTests, getThreadMessages } from "@/lib/application/chat-service";
 import {
   __resetResearchStoreForTests,
   buildResearchAnswer,
@@ -33,6 +33,24 @@ beforeEach(() => {
 });
 
 describe("startConversationWorkflow", () => {
+  it("creates distinct empty threads for 新しいチャット", async () => {
+    const a = await startConversationWorkflow({
+      workflowType: "general",
+      idempotencyKey: "idem-blank-chat-a",
+    });
+    const b = await startConversationWorkflow({
+      workflowType: "general",
+      idempotencyKey: "idem-blank-chat-b",
+    });
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(a.threadId).not.toBe(b.threadId);
+    expect(a.messageId).toBeNull();
+    expect(b.messageId).toBeNull();
+    expect(getThreadMessages(a.threadId)).toHaveLength(0);
+    expect(getThreadMessages(b.threadId)).toHaveLength(0);
+  });
+
   it("creates research thread from TopBar-style entry without message", async () => {
     const result = await startConversationWorkflow({
       workflowType: "research",

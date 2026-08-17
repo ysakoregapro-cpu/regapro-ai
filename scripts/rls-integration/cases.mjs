@@ -838,7 +838,7 @@ async function runKnowledge(reporter, { sales, hr, exec, adminFix, ids, runId })
   const unitEmbed = Array.from({ length: 384 }, (_, i) => (i === 0 ? 1 : 0));
   const vec = await sales.client.rpc("regapro_knowledge_vector_search", {
     p_query_embedding: JSON.stringify(unitEmbed),
-    p_limit: 10,
+    p_limit: 40,
   });
   if (vec.error) {
     reporter.fail("knowledge: vector RPC", vec.error.message);

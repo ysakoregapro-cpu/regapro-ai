@@ -48,6 +48,35 @@ describe("toAssistantMessages citation pass-through", () => {
     expect(pane.length).toBe(1);
   });
 
+  it("strips knowledge URIs from visible assistant text but keeps citation metadata", () => {
+    const messages: StoredMessage[] = [
+      {
+        id: "a1",
+        threadId: "t1",
+        role: "assistant",
+        content:
+          "許可取得済みです（根拠：『紹介』 knowledge://document/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/chunk/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb）",
+        createdAt: "2026-08-16T00:00:01.000Z",
+        confidentialityLevel: "company",
+        visibility: "organization",
+        citations: [
+          {
+            id: "c1",
+            title: "社内メモ",
+            source: "社内情報",
+            excerpt: "公開済み抜粋",
+            uri: "knowledge://document/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/chunk/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            provenance: "internal",
+          },
+        ],
+      },
+    ];
+    const local = toAssistantMessages(messages);
+    expect(local[0]?.content).not.toMatch(/knowledge:\/\//);
+    expect(local[0]?.content).not.toMatch(/根拠/);
+    expect(local[0]?.citations?.[0]?.uri).toMatch(/^knowledge:\/\//);
+  });
+
   it("does not let empty research wipe message citations", () => {
     const pane = citationsForRightPane({
       messageCitations: [

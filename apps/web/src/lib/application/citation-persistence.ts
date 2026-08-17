@@ -50,16 +50,19 @@ export async function persistMessageCitations(
   if (!input.citations.length) return 0;
 
   const rows = input.citations.map((c) => {
+    const isWeb = c.sourceType === "web" || c.sourceType === "research";
     const chunkId =
-      c.sourceType === "knowledge_chunk" ? extractChunkId(c.uri) : null;
+      !isWeb && c.sourceType === "knowledge_chunk" ? extractChunkId(c.uri) : null;
     const documentId =
-      c.sourceType === "knowledge" || c.sourceType === "knowledge_chunk"
+      !isWeb &&
+      (c.sourceType === "knowledge" || c.sourceType === "knowledge_chunk") &&
+      isUuid(c.sourceId)
         ? c.sourceId
         : null;
     return {
       message_id: input.messageId,
       chunk_id: isUuid(chunkId) ? chunkId : null,
-      document_id: isUuid(documentId) ? documentId : null,
+      document_id: documentId,
       source_title: c.title.slice(0, 500),
       source_url: c.uri,
       source_type: c.sourceType,
@@ -68,12 +71,43 @@ export async function persistMessageCitations(
     };
   });
 
-  const { error } = await client.from("message_citations").insert(rows);
-  if (error) {
-    console.error("[citations] persist failed", error.message);
-    return 0;
-  }
-  return rows.length;
+  const insertRows = async (
+    batch: typeof rows,
+  ): Promise<number> => {
+    if (!batch.length) return 0;
+    const { error } = await client.from("message_citations").insert(batch);
+    if (!error) return batch.length;
+    let ok = 0;
+    for (const row of batch) {
+      const first = await client.from("message_citations").insert(row);
+      if (!first.error) {
+        ok += 1;
+        continue;
+      }
+      if (row.chunk_id || row.document_id) {
+        const retry = await client.from("message_citations").insert({
+          ...row,
+          chunk_id: null,
+          document_id: null,
+        });
+        if (!retry.error) ok += 1;
+      }
+    }
+    if (ok === 0) {
+      console.error("[citations] persist failed", error.message);
+    }
+    return ok;
+  };
+
+  const webRows = rows.filter(
+    (r) => r.source_type === "web" || r.source_type === "research",
+  );
+  const internalRows = rows.filter(
+    (r) => r.source_type !== "web" && r.source_type !== "research",
+  );
+  const persisted =
+    (await insertRows(internalRows)) + (await insertRows(webRows));
+  return persisted;
 }
 
 export type PersistedCitationView = {

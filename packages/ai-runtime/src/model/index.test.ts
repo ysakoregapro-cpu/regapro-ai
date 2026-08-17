@@ -86,7 +86,7 @@ describe("CapabilityModelRouter", () => {
         hasInternalEvidence: true,
         hasWebEvidence: false,
       }).skipLlm,
-    ).toBe(true);
+    ).toBe(false);
 
     expect(
       router.route({
@@ -142,10 +142,10 @@ describe("filterOutboundLlmPayload", () => {
       userText: "通信事業の社内状況と外部環境",
       context: emptyContext(),
     });
-    expect(payload.user).toMatch(/社内出典: 0件/);
-    expect(payload.user).toMatch(/外部出典: 0件/);
+    expect(payload.user).toMatch(/社内出典: なし/);
+    expect(payload.user).toMatch(/外部出典: なし/);
     expect(payload.system).toMatch(/一般知識で補完しない/);
-    expect(payload.system).toMatch(/固定ラベルを本文に書かない/);
+    expect(payload.system).toMatch(/knowledge:\/\//);
   });
 });
 

@@ -5,7 +5,6 @@ import {
   FileText,
   ListTodo,
   Menu,
-  Mic,
   Paperclip,
   Send,
   Square,
@@ -22,6 +21,7 @@ import {
   ensureThreadReply,
   fetchThreadBundle,
   fetchThreadList,
+  startBlankConversation,
   type ThreadListItem,
 } from "@/lib/application/chat-api-client";
 import { listTasks, projectName } from "@/lib/application/catalog-service";
@@ -72,6 +72,7 @@ export default function AssistantPage() {
     () => (isDevSampleMode() ? selectableLevelsForClearance("people") : ["company"]),
   );
   const initialThread = params.get("thread");
+  const threadId = initialThread;
   const initialQuery = params.get("q") ?? "";
   const started = params.get("started") === "1";
   const initialTool = params.get("tool");
@@ -103,7 +104,7 @@ export default function AssistantPage() {
   }, []);
 
   const [threads, setThreads] = useState<ThreadListItem[]>([]);
-  const [threadId, setThreadId] = useState<string | null>(initialThread);
+  const creatingRef = useRef(false);
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [threadLevel, setThreadLevel] = useState<ConfidentialityLevel>("company");
   const [threadTitle, setThreadTitle] = useState("新しい依頼");
@@ -119,8 +120,6 @@ export default function AssistantPage() {
     initialTool === "web_research" ? "citations" : "citations",
   );
   const [feedback, setFeedback] = useState<Record<string, "up" | "down">>({});
-  const [correctionOpen, setCorrectionOpen] = useState<Record<string, boolean>>({});
-  const [corrections, setCorrections] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<string | null>(null);
   const [levelAdvice, setLevelAdvice] = useState<string | null>(null);
   const [researchCitations, setResearchCitations] = useState<
@@ -137,11 +136,10 @@ export default function AssistantPage() {
   const [researchProgress, setResearchProgress] = useState<string | null>(null);
   const [demoNotice, setDemoNotice] = useState<string | null>(null);
   const [threadArtifacts, setThreadArtifacts] = useState<ArtifactItem[]>([]);
-
-  const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const syncThreadParam = useCallback(
     (id: string | null, clearStarted = true) => {
@@ -220,7 +218,6 @@ export default function AssistantPage() {
     (id: string) => {
       setDrawerOpen(false);
       setLevelAdvice(null);
-      setThreadId(id);
       syncThreadParam(id, true);
     },
     [syncThreadParam]
@@ -274,10 +271,12 @@ export default function AssistantPage() {
     } else {
       setResearchProgress(null);
     }
-    if (run.isDemo && run.demoNoticeShown) {
+    if (run.isDemo && run.demoNoticeShown && isDevSampleMode()) {
       setDemoNotice(
         "現在は確認用データで調査フローを表示しています。実際のWeb検索はまだ接続されていません。",
       );
+    } else {
+      setDemoNotice(null);
     }
   }, []);
 
@@ -406,7 +405,6 @@ export default function AssistantPage() {
         return;
       }
       setInput("");
-      setThreadId(data.threadId);
       await refreshThreadList();
       await loadThread(data.threadId, { requestReply: true });
       syncThreadParam(data.threadId, true);
@@ -436,6 +434,23 @@ export default function AssistantPage() {
     await refreshThreadList();
   };
 
+  const startNewChat = async () => {
+    if (creatingRef.current) return;
+    creatingRef.current = true;
+    try {
+      const data = await startBlankConversation({ workflowType: "general" });
+      if (data.ok && data.redirectTo) {
+        setMessages([]);
+        setThreadTitle("新しい会話");
+        router.push(data.redirectTo);
+      } else {
+        setToast(data.message ?? "新しい会話を開始できませんでした");
+      }
+    } finally {
+      creatingRef.current = false;
+    }
+  };
+
   const copyMessage = async (content: string) => {
     try {
       await navigator.clipboard.writeText(content);
@@ -449,7 +464,7 @@ export default function AssistantPage() {
     <div className="flex h-[calc(100dvh-var(--header-height)-var(--mobile-nav-height)-40px)] min-h-[420px] flex-col overflow-hidden lg:flex-row">
       {/* Desktop thread list */}
       <aside className="hidden w-[240px] shrink-0 flex-col border-r border-border lg:flex">
-        <ThreadListHeader onNew={() => setToast("新しいスレッドを開始しました")} />
+        <ThreadListHeader onNew={() => void startNewChat()} />
         <ThreadList
           threads={threads}
           activeId={threadId}
@@ -545,23 +560,13 @@ export default function AssistantPage() {
         {levelAdvice ? (
           <div className="border-b border-border px-3 py-2 text-[12px] text-text-secondary">
             <p>{levelAdvice}</p>
-            <button
-              type="button"
-              className="mt-1 text-accent underline"
-              onClick={() => {
-                setLevelAdvice(null);
-                setToast("公開用の新しい会話はホームから作成してください");
-              }}
-            >
-              公開可能な内容を新しいスレッドへ抽出
-            </button>
           </div>
         ) : null}
 
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-1 py-3 lg:px-3">
-          {loadingThread ? (
+          {loadingThread && threadId ? (
             <p className="py-8 text-[13px] text-text-secondary">会話を読み込んでいます…</p>
-          ) : messages.length === 0 ? (
+          ) : !threadId || messages.length === 0 ? (
             <EmptyState
               title={
                 activeTools.includes("web_research")
@@ -581,8 +586,6 @@ export default function AssistantPage() {
                   key={msg.id}
                   message={msg}
                   feedback={feedback[msg.id]}
-                  correctionOpen={Boolean(correctionOpen[msg.id])}
-                  correction={corrections[msg.id] ?? ""}
                   onCopy={() => copyMessage(msg.content)}
                   onHelpful={() =>
                     setFeedback((f) => {
@@ -600,10 +603,6 @@ export default function AssistantPage() {
                       return next;
                     })
                   }
-                  onToggleCorrection={() =>
-                    setCorrectionOpen((o) => ({ ...o, [msg.id]: !o[msg.id] }))
-                  }
-                  onCorrectionChange={(v) => setCorrections((c) => ({ ...c, [msg.id]: v }))}
                   onMakeTask={() => {
                     const draft = interpretTaskUtterance(msg.content);
                     if (threadId) {
@@ -685,7 +684,6 @@ export default function AssistantPage() {
                 return;
               }
               if (data.threadId && data.threadId !== threadId) {
-                setThreadId(data.threadId);
                 syncThreadParam(data.threadId, true);
               }
               setToast(
@@ -804,26 +802,18 @@ function ThreadList({
 function MessageBubble({
   message,
   feedback,
-  correctionOpen,
-  correction,
   onCopy,
   onHelpful,
   onNeedsImprovement,
-  onToggleCorrection,
-  onCorrectionChange,
   onMakeTask,
   onKnowledgeCandidate,
   onOpenArtifact,
 }: {
   message: LocalMessage;
   feedback?: "up" | "down";
-  correctionOpen: boolean;
-  correction: string;
   onCopy: () => void;
   onHelpful: () => void;
   onNeedsImprovement: () => void;
-  onToggleCorrection: () => void;
-  onCorrectionChange: (value: string) => void;
   onMakeTask: () => void;
   onKnowledgeCandidate: () => void;
   onOpenArtifact: () => void;
@@ -861,7 +851,6 @@ function MessageBubble({
                 active={feedback === "down"}
                 onClick={onNeedsImprovement}
               />
-              <ActionChip label="修正" onClick={onToggleCorrection} active={correctionOpen} />
               <ActionChip
                 icon={<ListTodo className="h-3 w-3" />}
                 label="タスク化"
@@ -874,43 +863,6 @@ function MessageBubble({
                 onClick={onOpenArtifact}
               />
             </div>
-
-            {correctionOpen ? (
-              <form
-                className="mt-2 space-y-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  onToggleCorrection();
-                }}
-              >
-                <label htmlFor={`corr-${message.id}`} className="sr-only">
-                  修正内容
-                </label>
-                <textarea
-                  id={`corr-${message.id}`}
-                  value={correction}
-                  onChange={(e) => onCorrectionChange(e.target.value)}
-                  placeholder="望ましい回答内容を入力"
-                  rows={3}
-                  className="w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[12px]"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    className="h-8 rounded-md px-2 text-[12px] text-text-secondary"
-                    onClick={onToggleCorrection}
-                  >
-                    キャンセル
-                  </button>
-                  <button
-                    type="submit"
-                    className="h-8 rounded-md bg-accent px-2.5 text-[12px] text-accent-fg"
-                  >
-                    送信
-                  </button>
-                </div>
-              </form>
-            ) : null}
           </>
         ) : null}
       </div>
@@ -1032,14 +984,6 @@ function Composer({
             className="max-h-32 min-h-[36px] flex-1 resize-none bg-transparent px-1 py-2 text-[13px] outline-none"
           />
 
-          <button
-            type="button"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-text-secondary hover:bg-surface-raised"
-            aria-label="音声入力"
-          >
-            <Mic className="h-4 w-4" />
-          </button>
-
           {generating ? (
             <button
               type="button"
@@ -1107,7 +1051,7 @@ function RightPane({
                         ? "社内情報"
                         : c.source}
                   </StatusBadge>
-                  {c.uri ? (
+                  {c.uri && /^https?:\/\//i.test(c.uri) ? (
                     <p className="mt-0.5 truncate text-[11px] text-text-secondary">{c.uri}</p>
                   ) : null}
                   {c.excerpt ? (

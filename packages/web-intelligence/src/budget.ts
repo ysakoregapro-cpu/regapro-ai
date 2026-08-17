@@ -19,7 +19,7 @@ export class WebBudgetGuard {
   }
 
   takeQuery(): boolean {
-    this.assertTime();
+    if (this.remainingMs() <= 0) return false;
     if (this.queries >= this.budget.maxQueries) return false;
     this.queries += 1;
     return true;
@@ -33,14 +33,14 @@ export class WebBudgetGuard {
   }
 
   takePage(): boolean {
-    this.assertTime();
+    if (this.remainingMs() <= 0) return false;
     if (this.pages >= this.budget.maxFetchedPages) return false;
     this.pages += 1;
     return true;
   }
 
   takeBrowser(): boolean {
-    this.assertTime();
+    if (this.remainingMs() <= 0) return false;
     if (this.browsers >= this.budget.maxBrowserSessions) return false;
     this.browsers += 1;
     return true;

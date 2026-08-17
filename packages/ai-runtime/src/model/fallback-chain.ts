@@ -70,10 +70,21 @@ export class FallbackChainModelProvider implements ModelProvider {
 
     const honest = await this.honest.generate(input);
     const extra = lastError
-      ? [`クラウド推論に失敗したため、未接続時と同じ案内に切り替えました。`]
+      ? [
+          `クラウド推論に失敗したため回答を完了できませんでした（${lastError.slice(0, 80)}）。検索や推論を装ってはいません。`,
+        ]
       : [];
+    const text = lastError
+      ? [
+          "依頼は受け付けました。",
+          "",
+          `推論の実行に失敗しました: ${lastError.slice(0, 80)}`,
+          "検索や推論を実行したかのように装ってはいません。",
+        ].join("\n")
+      : honest.text;
     return {
       ...honest,
+      text,
       fallbackCount,
       limitations: [...honest.limitations, ...extra],
       role: route.role,

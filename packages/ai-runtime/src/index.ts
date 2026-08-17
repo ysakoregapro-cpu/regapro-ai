@@ -4,7 +4,7 @@ export type * from "./ports.js";
 export { RuleBasedIntentRouter } from "./intent-router.js";
 export { DefaultRetrievalPlanner } from "./retrieval-plan.js";
 export { DefaultContextBuilder } from "./context-builder.js";
-export { DefaultAnswerComposer } from "./answer-composer.js";
+export { DefaultAnswerComposer, sanitizeVisibleAnswerText } from "./answer-composer.js";
 export { runAnswerPipeline } from "./pipeline.js";
 export { createAnswerRuntimeLogger } from "./observability.js";
 export {

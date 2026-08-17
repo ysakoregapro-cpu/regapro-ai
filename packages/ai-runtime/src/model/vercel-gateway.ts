@@ -73,6 +73,8 @@ async function withRetry<T>(
     } catch (err) {
       last = err;
       const status = (err as { status?: number }).status;
+      const name = err instanceof Error ? err.name : "";
+      if (name === "TimeoutError" || name === "AbortError") throw err;
       if (status && status < 500 && status !== 429) throw err;
       if (i === retries) break;
       await new Promise((r) => setTimeout(r, 250 * (i + 1)));
@@ -153,7 +155,7 @@ export class VercelGatewayModelProvider implements ModelProvider {
             fetchImpl: this.fetchImpl,
             url: `${this.baseUrl}/chat/completions`,
             apiKey: this.apiKey,
-            timeoutMs: 25_000,
+            timeoutMs: role === "reasoning" ? 40_000 : 30_000,
             body: {
               model: modelId,
               messages: [

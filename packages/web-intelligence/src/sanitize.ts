@@ -11,6 +11,11 @@ const PII_RE =
 const INTERNAL_ID_RE = /\b(user|proj|org|mem|dept)-[a-z0-9-]+\b/i;
 const UNPUBLISHED_RE = /未公開|社内限定|confidential|経営会議メモ/gi;
 
+function hasPersonMention(text: string): boolean {
+  PERSON_SAN.lastIndex = 0;
+  return PERSON_SAN.test(text);
+}
+
 export type SanitizeInput = {
   request: string;
   confidentialityLevel: ConfidentialityLevel;
@@ -33,7 +38,7 @@ export function sanitizeExternalQuery(input: SanitizeInput): SanitizedQueryPlan 
       )
     : PERSON_SAN;
 
-  if (nameRe.test(working)) {
+  if (hasPersonMention(working) || (input.extraNamePattern && input.extraNamePattern.test(working))) {
     removed.push("person_name");
     working = working.replace(nameRe, " ").trim();
   }
@@ -121,6 +126,9 @@ export function sanitizeExternalQuery(input: SanitizeInput): SanitizedQueryPlan 
 
 export function assertNoSensitiveInExternalQueries(plan: SanitizedQueryPlan): void {
   for (const q of plan.sanitizedQueries) {
+    PERSON_SAN.lastIndex = 0;
+    COMPENSATION_RE.lastIndex = 0;
+    HEALTH_RE.lastIndex = 0;
     if (PERSON_SAN.test(q) || COMPENSATION_RE.test(q) || HEALTH_RE.test(q)) {
       throw new Error("External query contains sensitive content");
     }

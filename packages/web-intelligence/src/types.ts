@@ -65,5 +65,5 @@ export const DEFAULT_WEB_BUDGET: WebIntelligenceBudget = {
   maxFetchedPages: 4,
   maxBrowserSessions: 1,
   maxContextChars: 24_000,
-  timeoutMs: 25_000,
+  timeoutMs: 40_000,
 };

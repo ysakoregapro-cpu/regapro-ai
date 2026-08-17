@@ -18,12 +18,15 @@ export default function InvitePage() {
         />
         <button
           type="button"
-          className="h-10 w-full rounded-md bg-accent text-[14px] text-accent-fg"
+          className="h-10 w-full rounded-md bg-accent text-[14px] text-accent-fg disabled:opacity-50"
           disabled
-          title="supabaseモードかつ有効な招待トークンが必要です"
+          title="有効な招待トークン付きリンクが必要です"
         >
-          受諾する
+          受諾する（招待リンクが必要）
         </button>
+        <p className="text-[12px] text-text-secondary">
+          この画面単体では受諾できません。メールの招待リンクから開いてください。
+        </p>
       </form>
     </main>
   );

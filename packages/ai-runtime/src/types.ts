@@ -163,6 +163,7 @@ export type AnswerResult = {
     citationCount: number;
     sanitizedQueryCount: number;
     pagesFetched: number;
+    browserSessions?: number;
   };
 };
 
@@ -187,9 +188,13 @@ export type PipelineTrace = {
   citationCount?: number;
   sanitizedQueryCount?: number;
   pagesFetched?: number;
+  browserSessions?: number;
   needInternal?: boolean;
   needWeb?: boolean;
   needDeepResearch?: boolean;
+  fallbackReason?: string | null;
+  providerRequestResult?: "ok" | "fallback" | "failed";
+  modelConnected?: boolean;
 };
 
 export type WorkflowAnswerHints = {

@@ -49,13 +49,12 @@ export function filterOutboundLlmPayload(input: {
 
   const formatBlock = (label: string, rows: AIContextItem[]) => {
     if (rows.length === 0) {
-      return `${label}: 0件。この区分の事実は補完しないでください。`;
+      return `${label}: なし。この区分の事実は補完しないでください。件数は本文に書かないでください。`;
     }
     return [
       `${label}: ${rows.length}件`,
       ...rows.map((i, idx) => {
-        const uri = i.citation.uri ? ` ${i.citation.uri}` : "";
-        return `[#${idx + 1} ${i.source}${uri}] ${redact(i.content).slice(0, 1200)}`;
+        return `[#${idx + 1} ${i.source}] ${redact(i.content).slice(0, 1200)}`;
       }),
     ].join("\n");
   };
@@ -72,9 +71,9 @@ export function filterOutboundLlmPayload(input: {
     : [
         "あなたは RegaloProfessional の業務アシスタントです。",
         "会社固有の事実は「社内出典」に書かれた内容だけを使ってください。無い事実は一般知識で補完しないでください。",
-        "社内出典が0件なら、社内の現状は「確認できる情報がない」と明記してください。",
-        "外部出典がある場合は、社内が0件でも外部に基づいて公開情報を整理してください。社内事実と混同しないでください。",
-        "「出典：internal」のような固定ラベルを本文に書かないでください。根拠は渡された出典のタイトルやURLで示してください。",
+        "社内出典が無い場合は、社内の現状を「確認できない」と書いてください。件数や hidden な資料名は書かないでください。",
+        "外部出典がある場合は、社内が無くても外部に基づいて公開情報を整理してください。社内事実と混同しないでください。",
+        "本文に knowledge:// や内部URI、『根拠：』の箇条書き、「出典：internal」を書かないでください。引用はシステムが右側に出します。必要なときだけ [1] [2] と番号だけ書いてください。",
         "検索した・調べたと主張せず、渡された出典だけを使ってください。",
         elevated
           ? "この依頼は社内の取り扱い区分が高いため、推測で機密を補完してはいけません。"

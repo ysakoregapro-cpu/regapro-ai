@@ -9,6 +9,7 @@ import {
   createDefaultAnswerPipelineDeps,
   runAnswerPipeline,
   FallbackChainModelProvider,
+  sanitizeVisibleAnswerText,
   type KnowledgeSearchPort,
 } from "./index.js";
 import { DisconnectedEmbeddingProvider } from "@regapro/knowledge";
@@ -52,6 +53,32 @@ describe("RuleBasedIntentRouter", () => {
     );
     expect((await router.route({ text: "タスクにして" })).intent).toBe("task");
     expect((await router.route({ text: "議事録を作成" })).intent).toBe("document");
+  });
+
+  it("does not route internal-only recruitment questions to web search", async () => {
+    const text =
+      "Web検索は使わず、公開済みの社内Knowledgeだけを使ってレガプロの有料職業紹介事業の基本業務を整理して";
+    const d = await router.route({ text });
+    expect(d.intent).toBe("internal_knowledge");
+    const plan = new DefaultRetrievalPlanner().plan({
+      intent: d,
+      access: access(),
+      text,
+    });
+    expect(plan.needWeb).toBe(false);
+    expect(plan.needDeepResearch).toBe(false);
+    expect(plan.needInternalKnowledge).toBe(true);
+  });
+});
+
+describe("sanitizeVisibleAnswerText", () => {
+  it("strips knowledge URIs and duplicated 根拠 footers", () => {
+    const raw =
+      "基本業務は許可取得です（根拠：『有料職業紹介』 knowledge://document/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/chunk/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb）\n根拠：同じ内容";
+    const cleaned = sanitizeVisibleAnswerText(raw);
+    expect(cleaned).not.toMatch(/knowledge:\/\//);
+    expect(cleaned).not.toMatch(/根拠/);
+    expect(cleaned).toMatch(/基本業務は許可取得です/);
   });
 });
 

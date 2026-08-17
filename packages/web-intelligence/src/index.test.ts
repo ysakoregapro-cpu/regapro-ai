@@ -7,6 +7,7 @@ import { DisconnectedContentProvider } from "./providers/firecrawl.js";
 import type { WebSearchProvider } from "./ports.js";
 import type { WebSource } from "./types.js";
 import { DEFAULT_WEB_BUDGET } from "./types.js";
+import { WebBudgetGuard } from "./budget.js";
 
 describe("sanitizeExternalQuery", () => {
   it("does not send private salary/person details to the web", () => {
@@ -127,6 +128,12 @@ describe("orchestrator", () => {
     });
     expect(out.sources).toHaveLength(1);
     expect(out.sources[0]?.canonicalUrl).toContain("example.com");
+  });
+
+  it("stops when time budget is exhausted instead of throwing", () => {
+    const guard = new WebBudgetGuard({ ...DEFAULT_WEB_BUDGET, timeoutMs: 0 });
+    expect(guard.takeQuery()).toBe(false);
+    expect(guard.takePage()).toBe(false);
   });
 });
 

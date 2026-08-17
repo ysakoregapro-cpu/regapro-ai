@@ -10,17 +10,32 @@ import {
   type WebRetriever,
 } from "@regapro/ai-runtime";
 import { createWebIntelligenceDeps } from "@regapro/web-intelligence";
+import { getDataMode } from "@/lib/supabase/env";
 
 function hasKey(name: string): boolean {
   return Boolean(process.env[name]?.trim());
 }
 
+/** Booleans and selected ids only — never secret values. */
 export function cloudRuntimeStatus() {
+  const aiGatewayKeyPresent = hasKey("AI_GATEWAY_API_KEY");
+  const tavilyKeyPresent = hasKey("TAVILY_API_KEY");
+  const firecrawlKeyPresent = hasKey("FIRECRAWL_API_KEY");
+  const browserbaseKeyPresent = hasKey("BROWSERBASE_API_KEY");
+  const browserbaseProjectIdPresent = hasKey("BROWSERBASE_PROJECT_ID");
   return {
-    aiGateway: hasKey("AI_GATEWAY_API_KEY"),
-    tavily: hasKey("TAVILY_API_KEY"),
-    firecrawl: hasKey("FIRECRAWL_API_KEY"),
-    browserbase: hasKey("BROWSERBASE_API_KEY") && hasKey("BROWSERBASE_PROJECT_ID"),
+    dataMode: getDataMode(),
+    aiGatewayKeyPresent,
+    tavilyKeyPresent,
+    firecrawlKeyPresent,
+    browserbaseKeyPresent,
+    browserbaseProjectIdPresent,
+    aiGateway: aiGatewayKeyPresent,
+    tavily: tavilyKeyPresent,
+    firecrawl: firecrawlKeyPresent,
+    browserbase: browserbaseKeyPresent && browserbaseProjectIdPresent,
+    selectedProvider: aiGatewayKeyPresent ? "vercel-ai-gateway" : "honest-fallback",
+    selectedModelRole: "main",
     langfuse:
       hasKey("LANGFUSE_PUBLIC_KEY") &&
       hasKey("LANGFUSE_SECRET_KEY") &&

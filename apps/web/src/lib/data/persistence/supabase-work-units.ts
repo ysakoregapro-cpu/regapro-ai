@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/types";
+import type { Database, Json } from "@/lib/supabase/types";
 import type { ArtifactPersistence, FileObjectPersistence, PersistedTask, ResearchPersistence, TaskPersistence } from "./ports";
 import type { StoredArtifact } from "@/lib/application/artifact-service";
 import type { ResearchRun, ResearchStatus } from "@/lib/application/research-service";
@@ -19,6 +19,76 @@ import {
 type Client = SupabaseClient<Database>;
 
 const researchIdempotency = new Map<string, string>();
+
+type ResearchRunRow = Database["public"]["Tables"]["research_runs"]["Row"];
+
+function extrasToJson(run: ResearchRun): Json {
+  return {
+    queries: run.queries,
+    queryPlan: (run.queryPlan ?? null) as Json,
+    sources: run.sources as Json,
+    findings: run.findings,
+    citations: run.citations as Json,
+    resultArtifactId: run.resultArtifactId,
+    processingMetadata: run.processingMetadata,
+    title: run.title,
+    errorCode: run.errorCode,
+    errorMessage: run.errorMessage,
+    demoNoticeShown: run.demoNoticeShown,
+  };
+}
+
+function extrasFromJson(value: Json | null | undefined): Partial<ResearchRun> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const o = value as Record<string, Json | undefined>;
+  const queries = Array.isArray(o.queries)
+    ? o.queries.filter((q): q is string => typeof q === "string")
+    : undefined;
+  const findings = Array.isArray(o.findings)
+    ? o.findings.filter((f): f is string => typeof f === "string")
+    : undefined;
+  const processingMetadata =
+    o.processingMetadata &&
+    typeof o.processingMetadata === "object" &&
+    !Array.isArray(o.processingMetadata)
+      ? Object.fromEntries(
+          Object.entries(o.processingMetadata).filter(
+            (entry): entry is [string, string] => typeof entry[1] === "string",
+          ),
+        )
+      : undefined;
+  return {
+    queries,
+    queryPlan: (o.queryPlan as ResearchRun["queryPlan"]) ?? undefined,
+    sources: (o.sources as ResearchRun["sources"]) ?? undefined,
+    findings,
+    citations: (o.citations as ResearchRun["citations"]) ?? undefined,
+    resultArtifactId:
+      typeof o.resultArtifactId === "string" || o.resultArtifactId === null
+        ? o.resultArtifactId
+        : undefined,
+    processingMetadata,
+    title: typeof o.title === "string" ? o.title : undefined,
+    errorCode: typeof o.errorCode === "string" || o.errorCode === null ? o.errorCode : undefined,
+    errorMessage:
+      typeof o.errorMessage === "string" || o.errorMessage === null
+        ? o.errorMessage
+        : undefined,
+    demoNoticeShown: typeof o.demoNoticeShown === "boolean" ? o.demoNoticeShown : undefined,
+  };
+}
+
+function providerFromRow(value: string | null | undefined): ResearchRun["provider"] {
+  if (
+    value === "demo" ||
+    value === "searxng" ||
+    value === "http" ||
+    value === "web-intelligence"
+  ) {
+    return value;
+  }
+  return "http";
+}
 
 function mapResearchStatusToDb(
   status: ResearchStatus,
@@ -50,22 +120,11 @@ function mapResearchStatusFromDb(
 }
 
 function researchFromRow(
-  row: {
-    id: string;
-    org_id: string;
-    project_id: string | null;
-    query: string;
-    status: string;
-    created_by: string;
-    created_at: string;
-    updated_at: string;
-    confidentiality_level: number;
-    visibility: string;
-    origin_thread_id: string | null;
-    origin_message_id: string | null;
-  },
+  row: ResearchRunRow,
   extras?: Partial<ResearchRun>,
 ): ResearchRun {
+  const stored = extrasFromJson(row.extras);
+  const merged: Partial<ResearchRun> = { ...stored, ...extras };
   return {
     id: row.id,
     threadId: row.origin_thread_id ?? "",
@@ -77,22 +136,22 @@ function researchFromRow(
     projectId: row.project_id,
     status: mapResearchStatusFromDb(row.status),
     purpose: row.query,
-    queries: extras?.queries ?? [row.query],
-    queryPlan: extras?.queryPlan ?? null,
-    sources: extras?.sources ?? [],
-    findings: extras?.findings ?? [],
-    citations: extras?.citations ?? [],
-    resultArtifactId: extras?.resultArtifactId ?? null,
+    queries: merged.queries ?? [row.query],
+    queryPlan: merged.queryPlan ?? null,
+    sources: merged.sources ?? [],
+    findings: merged.findings ?? [],
+    citations: merged.citations ?? [],
+    resultArtifactId: merged.resultArtifactId ?? null,
     startedAt: row.created_at,
     completedAt: row.status === "completed" ? row.updated_at : null,
     failedAt: row.status === "failed" ? row.updated_at : null,
-    provider: extras?.provider ?? "demo",
-    isDemo: extras?.isDemo ?? true,
-    errorCode: extras?.errorCode ?? null,
-    errorMessage: extras?.errorMessage ?? null,
-    processingMetadata: extras?.processingMetadata ?? { mode: "supabase" },
-    title: extras?.title ?? row.query.slice(0, 40),
-    demoNoticeShown: extras?.demoNoticeShown ?? true,
+    provider: merged.provider ?? providerFromRow(row.provider),
+    isDemo: merged.isDemo ?? row.is_demo ?? false,
+    errorCode: merged.errorCode ?? null,
+    errorMessage: merged.errorMessage ?? null,
+    processingMetadata: merged.processingMetadata ?? { mode: "supabase" },
+    title: merged.title ?? row.query.slice(0, 40),
+    demoNoticeShown: merged.demoNoticeShown ?? false,
   };
 }
 
@@ -469,6 +528,9 @@ export function createSupabaseResearchPersistence(
           security_label_source: "inherited",
           created_at: run.startedAt,
           updated_at: run.completedAt ?? run.startedAt,
+          provider: run.provider,
+          is_demo: run.isDemo,
+          extras: extrasToJson(run),
         })
         .select("*")
         .single();
@@ -487,6 +549,9 @@ export function createSupabaseResearchPersistence(
           updated_at: new Date().toISOString(),
           confidentiality_level: levelToDb(run.confidentialityLevel),
           visibility: run.visibility,
+          provider: run.provider,
+          is_demo: run.isDemo,
+          extras: extrasToJson(run),
         })
         .eq("id", run.id)
         .select("*")

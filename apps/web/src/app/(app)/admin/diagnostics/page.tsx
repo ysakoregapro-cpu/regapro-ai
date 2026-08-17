@@ -44,30 +44,38 @@ export default async function DiagnosticsPage() {
         />
         <ConnectionStatus
           label="クラウド推論"
-          connected={runtime.aiGateway}
+          connected={runtime.aiGatewayKeyPresent}
           reason={
-            runtime.aiGateway
-              ? "推論ゲートウェイ接続済み（本体は RegaloProfessional Runtime）"
-              : "未設定。Local が無くてもキー設定後に同一機能を利用できます"
+            runtime.aiGatewayKeyPresent
+              ? `推論ゲートウェイ接続済み（provider=${runtime.selectedProvider} / role=${runtime.selectedModelRole}）`
+              : "AI_GATEWAY_API_KEY 未設定。Local が無くてもキー設定後に同一機能を利用できます"
           }
         />
         <ConnectionStatus
           label="Web検索"
-          connected={runtime.tavily}
-          reason={runtime.tavily ? "接続済み" : "未接続。結果の捏造はしません"}
+          connected={runtime.tavilyKeyPresent}
+          reason={
+            runtime.tavilyKeyPresent
+              ? "TAVILY_API_KEY present"
+              : "TAVILY_API_KEY 未設定。結果の捏造はしません"
+          }
         />
         <ConnectionStatus
           label="ページ取得"
-          connected={runtime.firecrawl}
-          reason={runtime.firecrawl ? "接続済み" : "未接続。検索スニペットのみ"}
+          connected={runtime.firecrawlKeyPresent}
+          reason={
+            runtime.firecrawlKeyPresent
+              ? "FIRECRAWL_API_KEY present"
+              : "FIRECRAWL_API_KEY 未設定。検索スニペットのみ"
+          }
         />
         <ConnectionStatus
           label="ブラウザ実行（高コスト）"
           connected={runtime.browserbase}
           reason={
             runtime.browserbase
-              ? "接続済み（通常取得では使いません）"
-              : "未接続"
+              ? "BROWSERBASE_API_KEY / PROJECT_ID present（通常取得では使いません）"
+              : `BROWSERBASE_API_KEY=${runtime.browserbaseKeyPresent} PROJECT_ID=${runtime.browserbaseProjectIdPresent}`
           }
         />
         <ConnectionStatus
@@ -138,6 +146,8 @@ export default async function DiagnosticsPage() {
                 <th className="py-1 font-medium">cite</th>
                 <th className="py-1 font-medium">persist</th>
                 <th className="py-1 font-medium">model</th>
+                <th className="py-1 font-medium">result</th>
+                <th className="py-1 font-medium">fallback</th>
               </tr>
             </thead>
             <tbody>
@@ -155,7 +165,10 @@ export default async function DiagnosticsPage() {
                   <td className="py-1">{d.citationPersistCount}</td>
                   <td className="py-1">
                     {d.modelRole ?? "—"} / {d.modelProvider}
+                    {d.modelId ? ` / ${d.modelId}` : ""}
                   </td>
+                  <td className="py-1">{d.providerRequestResult}</td>
+                  <td className="py-1">{d.fallbackReason ?? "—"}</td>
                 </tr>
               ))}
             </tbody>

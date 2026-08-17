@@ -74,4 +74,34 @@ export async function createDerivedViaApi(input: {
   return res.json() as Promise<{ ok: boolean }>;
 }
 
+export async function startBlankConversation(input?: {
+  workflowType?: "general" | "research";
+  idempotencyKey?: string;
+}): Promise<{
+  ok: boolean;
+  threadId?: string;
+  redirectTo?: string;
+  message?: string;
+}> {
+  const workflowType = input?.workflowType ?? "general";
+  const key = input?.idempotencyKey ?? crypto.randomUUID();
+  const res = await fetch("/api/chat/workflow", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": key,
+    },
+    body: JSON.stringify({
+      workflowType,
+      idempotencyKey: key,
+    }),
+  });
+  return (await res.json()) as {
+    ok: boolean;
+    threadId?: string;
+    redirectTo?: string;
+    message?: string;
+  };
+}
+
 export type { ConfidentialityLevel };

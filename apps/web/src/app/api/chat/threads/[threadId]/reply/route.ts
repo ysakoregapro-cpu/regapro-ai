@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ensureAssistantReplyAsync } from "@/lib/application/data-gateway";
 import { catchToJson } from "@/lib/application/api-errors";
+import { lastSafeRuntimeSnapshot } from "@/lib/application/runtime-snapshot";
 
 type Params = { params: Promise<{ threadId: string }> };
 
@@ -28,6 +29,7 @@ export async function POST(request: Request, { params }: Params) {
       message: result.message,
       messages: result.messages,
       created: result.created,
+      runtime: lastSafeRuntimeSnapshot(),
     });
   } catch (err) {
     return catchToJson(err);

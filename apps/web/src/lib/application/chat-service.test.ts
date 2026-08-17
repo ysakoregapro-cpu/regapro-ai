@@ -10,6 +10,7 @@ import {
   searchAccessible,
   startChatFromHome,
   answerAboutColleague,
+  getThread,
 } from "./chat-service";
 import { CURRENT_MEMBERSHIP, SAMPLE_MEMBERSHIPS } from "@/lib/data/dev-sample/memberships";
 import { CURRENT_USER } from "@/lib/data/dev-sample/catalog";
@@ -51,15 +52,30 @@ describe("home → chat start persistence", () => {
     expect(a.messageId).toBe(b.messageId);
   });
 
-  it("restores content when confirmation is required", () => {
+  it("starts L1 recruitment questions without raising clearance", () => {
     const r = startChatFromHome({
-      content: "応募者の履歴書を要約して",
+      content: "Web検索は使わず、公開済み社内Knowledgeだけで有料職業紹介について整理して",
       requestedLevel: "company",
-      userId: "user-hr",
+      userId: "user-tanaka",
+      idempotencyKey: "key-l1-recruit",
     });
-    expect(r.ok).toBe(false);
-    if (r.ok) return;
-    expect(r.restoreContent).toContain("履歴書");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const thread = getThread(r.threadId);
+    expect(thread?.confidentialityLevel).toBe("company");
+  });
+
+  it("does not escalate L1 threads from 求職者 keywords or confirmRaise", () => {
+    const r = startChatFromHome({
+      content: "有料職業紹介の求職者対応の基本業務を整理して",
+      requestedLevel: "company",
+      confirmRaise: true,
+      userId: "user-tanaka",
+      idempotencyKey: "key-l1-jobseeker",
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(getThread(r.threadId)?.confidentialityLevel).toBe("company");
   });
 });
 

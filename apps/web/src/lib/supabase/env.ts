@@ -6,11 +6,19 @@ export type RegaproDataMode = z.infer<typeof dataModeSchema>;
 
 export function getDataMode(): RegaproDataMode {
   // Client components may read NEXT_PUBLIC_*; server prefers REGAPRO_DATA_MODE.
+  // Next.js loads apps/web/.env.local into this process when `next dev`/`next build` runs.
   const raw =
     process.env.REGAPRO_DATA_MODE ||
     process.env.NEXT_PUBLIC_REGAPRO_DATA_MODE;
   if (raw === undefined || raw === "") {
-    return "dev-sample";
+    const hasLiveSupabase = Boolean(
+      process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() &&
+        (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()),
+    );
+    // Placeholder/dev-sample is opt-in. Localhost with live Supabase config
+    // must not silently select HonestFallback / demo research.
+    return hasLiveSupabase ? "supabase" : "dev-sample";
   }
   const parsed = dataModeSchema.safeParse(raw);
   if (!parsed.success) {

@@ -101,7 +101,7 @@ export async function startConversationWorkflowLive(
     }
   }
 
-  let level: ConfidentialityLevel = input.confidentialityLevel ?? "company";
+  const level: ConfidentialityLevel = input.confidentialityLevel ?? "company";
   if (!canAssignConfidentialityLevel(session.access, level)) {
     return {
       ok: false,
@@ -122,25 +122,7 @@ export async function startConversationWorkflowLive(
   if (content) {
     const classification = classifySensitiveContent(content);
     classificationSignals = classification.matchedSignals.map(String);
-    if (
-      compareConfidentiality(classification.suggestedLevel, level) > 0 &&
-      !canAssignConfidentialityLevel(session.access, classification.suggestedLevel)
-    ) {
-      return {
-        ok: false,
-        code: "PERMISSION_DENIED",
-        message:
-          "この内容は現在の権限では扱えません。所属の管理者へ相談してください。",
-        restoreContent: content,
-        suggestedLevel: classification.suggestedLevel,
-      };
-    }
-    if (
-      compareConfidentiality(classification.suggestedLevel, level) > 0 &&
-      canAssignConfidentialityLevel(session.access, classification.suggestedLevel)
-    ) {
-      level = maxConfidentiality(level, classification.suggestedLevel);
-    }
+    // Domain/topic words are not clearance. Retrieve at the requested AccessContext.
   }
 
   const title = content ? titleFromContent(content) : WORKFLOW_TITLES[workflowType];
@@ -305,7 +287,7 @@ export async function startChatFromHomeLive(
     }
   }
 
-  let level = input.requestedLevel;
+  const level = input.requestedLevel;
 
   if (!canAssignConfidentialityLevel(session.access, level)) {
     return {
@@ -317,53 +299,6 @@ export async function startChatFromHomeLive(
       restoreContent: content,
       classification,
     };
-  }
-
-  if (
-    compareConfidentiality(classification.suggestedLevel, level) > 0 &&
-    !input.confirmRaise
-  ) {
-    if (
-      !canAssignConfidentialityLevel(
-        session.access,
-        classification.suggestedLevel,
-      )
-    ) {
-      return {
-        ok: false,
-        code: "PERMISSION_DENIED",
-        message:
-          "この内容は現在の権限では扱えません。所属の管理者へ相談してください。",
-        restoreContent: content,
-        classification,
-        suggestedLevel: classification.suggestedLevel,
-      };
-    }
-    return {
-      ok: false,
-      code: "NEEDS_CONFIRMATION",
-      message:
-        classification.suggestedLevel === "executive"
-          ? `給与・評価等の経営情報を含む可能性があります。情報区分を「${CONFIDENTIALITY_LABELS.executive}」へ変更して続けますか？`
-          : `人事情報を含む可能性があります。情報区分を「${CONFIDENTIALITY_LABELS.people}」へ変更して続けますか？`,
-      restoreContent: content,
-      classification,
-      suggestedLevel: classification.suggestedLevel,
-    };
-  }
-
-  if (input.confirmRaise && classification.suggestedLevel) {
-    level = maxConfidentiality(level, classification.suggestedLevel);
-    if (!canAssignConfidentialityLevel(session.access, level)) {
-      return {
-        ok: false,
-        code: "PERMISSION_DENIED",
-        message:
-          "この内容は現在の権限では扱えません。所属の管理者へ相談してください。",
-        restoreContent: content,
-        classification,
-      };
-    }
   }
 
   const started = await startConversationWorkflowLive({
@@ -946,11 +881,15 @@ async function writeAssistantReply(
       citationPersistCount: persisted,
       sanitizedQueryCount: answer.retrieval.sanitizedQueryCount,
       pagesFetched: answer.retrieval.pagesFetched,
+      browserSessions: answer.retrieval.browserSessions ?? 0,
       modelRole: answer.model.role ?? null,
       modelId: answer.model.modelId,
       modelProvider: answer.model.providerId,
       success: true,
       failureStage: null,
+      fallbackReason: answer.model.connected ? null : "no_connected_provider",
+      providerRequestResult: answer.model.connected ? "ok" : "fallback",
+      modelConnected: answer.model.connected,
     });
   } catch (err) {
     console.error("[citations] write skipped", err);
@@ -978,13 +917,14 @@ async function createAndCompleteResearch(
     if (hit) return hit;
   }
 
+  const now = new Date().toISOString();
+  try {
   const plan = sanitizeExternalQuery({
     request: input.content,
     confidentialityLevel: input.level,
   });
   assertNoSensitiveInExternalQueries(plan);
 
-  const now = new Date().toISOString();
   const {
     createWebIntelligenceDeps,
     DefaultWebResearchProvider,
@@ -996,19 +936,31 @@ async function createAndCompleteResearch(
   let sources: ResearchRun["sources"] = [];
   let findings: string[] = [];
   let citations: ResearchRun["citations"] = [];
-  const isDemo = !connected;
-  const provider: ResearchRun["provider"] = connected ? "web-intelligence" : "demo";
+  const isDemo = false;
+  const provider: ResearchRun["provider"] = connected ? "web-intelligence" : "http";
   const processingMetadata: Record<string, string> = {
     mode: "supabase",
-    webConnected: String(connected),
+    webConnected: String(deps.search.connected),
+    externalAllowed: String(plan.externalTransmissionAllowed),
+    tavily: String(deps.search.connected),
+    firecrawl: String(deps.content.connected),
+    browserbase: String(deps.browser.connected),
   };
+  let errorCode: string | null = null;
+  let errorMessage: string | null = null;
 
   if (connected) {
     const researcher = new DefaultWebResearchProvider(deps);
     const result = await researcher.research({
       plan,
       confidentialityLevel: input.level,
-      budget: DEFAULT_WEB_BUDGET,
+      budget: {
+        ...DEFAULT_WEB_BUDGET,
+        timeoutMs: 50_000,
+        maxQueries: 3,
+        maxFetchedPages: 3,
+        maxBrowserSessions: 0,
+      },
       needPageBodies: true,
       allowBrowserEscalation: false,
     });
@@ -1034,6 +986,7 @@ async function createAndCompleteResearch(
     }
     processingMetadata.pagesFetched = String(result.pagesFetched);
     processingMetadata.queriesUsed = String(result.queriesUsed.length);
+    processingMetadata.browserSessions = String(result.browserSessions);
 
     if (result.sources.length > 0) {
       try {
@@ -1065,29 +1018,18 @@ async function createAndCompleteResearch(
       }
     }
   } else {
-    sources = plan.sanitizedQueries.map((q, i) => ({
-      id: newId(),
-      title: `確認用候補 ${i + 1}`,
-      note: `Query計画のみ（実取得なし）: ${q}`,
-    }));
-    findings = [
-      "公開情報では表示方法に差がある（確認用）",
-      "社内手順との突合が次の確認事項になる（確認用）",
-    ];
-    citations = [
-      {
-        id: newId(),
-        title: "確認用の調査メモ",
-        publisher: "デモデータ",
-        url: null,
-        publishedAt: null,
-        retrievedAt: now,
-        excerpt:
-          "現在は確認用データで調査フローを表示しています。実際のWeb検索はまだ接続されていません。",
-        confidence: 0.35,
-        confidentialityLevel: input.level,
-      },
-    ];
+    if (!deps.search.connected) {
+      errorCode = "WEB_SEARCH_UNCONFIGURED";
+      errorMessage = "Web検索が未接続のため、外部調査は実行していません。";
+    } else if (!plan.externalTransmissionAllowed) {
+      errorCode = "EXTERNAL_QUERY_BLOCKED";
+      errorMessage =
+        "この依頼では外部へ検索クエリを送れないため、Web調査は実行していません。";
+    } else {
+      errorCode = "WEB_SEARCH_EMPTY";
+      errorMessage = "公開情報は見つかりませんでした。";
+    }
+    findings = [errorMessage];
   }
 
   const run: ResearchRun = {
@@ -1099,7 +1041,7 @@ async function createAndCompleteResearch(
     confidentialityLevel: input.level,
     visibility: input.visibility,
     projectId: input.projectId,
-    status: "completed",
+    status: errorCode ? "failed" : "completed",
     purpose: input.content,
     queries: plan.sanitizedQueries,
     queryPlan: plan,
@@ -1108,12 +1050,12 @@ async function createAndCompleteResearch(
     citations,
     resultArtifactId: null,
     startedAt: now,
-    completedAt: now,
-    failedAt: null,
+    completedAt: errorCode ? null : now,
+    failedAt: errorCode ? now : null,
     provider,
     isDemo,
-    errorCode: null,
-    errorMessage: null,
+    errorCode,
+    errorMessage,
     processingMetadata,
     title: input.content.slice(0, 40) || "調査",
     demoNoticeShown: isDemo,
@@ -1124,6 +1066,39 @@ async function createAndCompleteResearch(
     await persist.research.saveIdempotency(input.idempotencyKey, run.id);
   }
   return run;
+  } catch (err) {
+    const message = err instanceof Error ? err.message.slice(0, 80) : "WEB_SEARCH_FAILED";
+    const failed: ResearchRun = {
+      id: newId(),
+      threadId: input.threadId,
+      requestMessageId: input.messageId,
+      organizationId: input.orgId,
+      requestedBy: input.userId,
+      confidentialityLevel: input.level,
+      visibility: input.visibility,
+      projectId: input.projectId,
+      status: "failed",
+      purpose: input.content,
+      queries: [],
+      queryPlan: null,
+      sources: [],
+      findings: [`Web検索を実行できませんでした（${message}）。検索したようには装っていません。`],
+      citations: [],
+      resultArtifactId: null,
+      startedAt: now,
+      completedAt: null,
+      failedAt: now,
+      provider: "http",
+      isDemo: false,
+      errorCode: message,
+      errorMessage: message,
+      processingMetadata: { mode: "supabase" },
+      title: input.content.slice(0, 40) || "調査",
+      demoNoticeShown: false,
+    };
+    await persist.research.create(failed);
+    return failed;
+  }
 }
 
 async function createArtifactLive(

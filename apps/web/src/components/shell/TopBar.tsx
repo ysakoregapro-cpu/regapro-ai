@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Bell, ChevronDown, FolderKanban, Menu, Plus, Search, User } from "lucide-react";
 import { isDevSampleMode } from "@/lib/supabase/env";
 import { SAMPLE_NOTIFICATIONS, SAMPLE_PROJECTS } from "@/lib/data/dev-sample/catalog";
+import { startBlankConversation } from "@/lib/application/chat-api-client";
 import { cn } from "@/lib/cn";
 
 export function TopBar({
@@ -21,6 +22,7 @@ export function TopBar({
         type="button"
         className="inline-flex h-10 w-10 items-center justify-center rounded-md text-text-secondary hover:bg-surface-raised md:hidden"
         aria-label="メニュー"
+        onClick={onOpenCommand}
       >
         <Menu className="h-5 w-5" />
       </button>
@@ -94,7 +96,22 @@ function GlobalCreateMenu() {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const creatingRef = useRef(false);
   const router = useRouter();
+
+  async function startNewChat() {
+    if (creatingRef.current || pending) return;
+    creatingRef.current = true;
+    setPending(true);
+    setOpen(false);
+    try {
+      const data = await startBlankConversation({ workflowType: "general" });
+      if (data.ok && data.redirectTo) router.push(data.redirectTo);
+    } finally {
+      creatingRef.current = false;
+      setPending(false);
+    }
+  }
 
   async function startResearch() {
     setPending(true);
@@ -163,14 +180,15 @@ function GlobalCreateMenu() {
           role="menu"
           className="absolute right-0 z-[40] mt-1 w-52 rounded-[12px] border border-border bg-surface py-1 shadow-[var(--shadow-menu)]"
         >
-          <Link
-            href="/assistant"
-            className="block px-3 py-2 text-[13px] hover:bg-surface-raised"
+          <button
+            type="button"
             role="menuitem"
-            onClick={() => setOpen(false)}
+            className="block w-full px-3 py-2 text-left text-[13px] hover:bg-surface-raised disabled:opacity-50"
+            disabled={pending}
+            onClick={() => void startNewChat()}
           >
-            新しいチャット
-          </Link>
+            {pending ? "作成中…" : "新しいチャット"}
+          </button>
           <button
             type="button"
             role="menuitem"
@@ -348,8 +366,9 @@ export function CommandPalette({
 }) {
   const inputId = useId();
   const ref = useRef<HTMLInputElement>(null);
+  const router = useRouter();
+  const [creating, setCreating] = useState(false);
   const commands = [
-    { href: "/assistant", label: "新しいチャット" },
     { href: "/tasks?filter=today", label: "今日のタスク" },
     { href: "/workspace/research", label: "調査ライブラリ" },
     { href: "/workspace/documents", label: "ドキュメント" },
@@ -357,6 +376,18 @@ export function CommandPalette({
     { href: "/settings", label: "設定を開く" },
     { href: "/search", label: "横断検索" },
   ];
+
+  async function startNewChat() {
+    if (creating) return;
+    setCreating(true);
+    try {
+      const data = await startBlankConversation({ workflowType: "general" });
+      onClose();
+      if (data.ok && data.redirectTo) router.push(data.redirectTo);
+    } finally {
+      setCreating(false);
+    }
+  }
 
   useEffect(() => {
     if (open) ref.current?.focus();
@@ -394,6 +425,16 @@ export function CommandPalette({
           placeholder="コマンドまたは画面を検索…"
         />
         <ul className="max-h-72 overflow-y-auto py-1">
+          <li>
+            <button
+              type="button"
+              className="block w-full px-4 py-2.5 text-left text-[13px] hover:bg-surface-raised disabled:opacity-50"
+              disabled={creating}
+              onClick={() => void startNewChat()}
+            >
+              {creating ? "作成中…" : "新しいチャット"}
+            </button>
+          </li>
           {commands.map((c) => (
             <li key={c.href}>
               <Link

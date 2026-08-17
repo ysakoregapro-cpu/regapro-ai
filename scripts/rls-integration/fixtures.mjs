@@ -562,6 +562,7 @@ export async function setupFixtures({ url, anon, secret, runId }) {
         project_id: opts.projectId ?? null,
         source_type: opts.sourceType ?? "manual",
         contains_personal_conversation: opts.personal ?? false,
+        source_quality: opts.sourceQuality ?? null,
         published_at:
           opts.status === "draft" || opts.status === "review"
             ? null
@@ -619,6 +620,7 @@ export async function setupFixtures({ url, anon, secret, runId }) {
     level: 1,
     visibility: "organization",
     embedding: unitEmbed,
+    sourceQuality: 0.999,
   });
   ids.knowledgeL2 = await seedKnowledgeDoc({
     title: "knowledge L2 org 人事評価",

@@ -2809,11 +2809,14 @@ export type Database = {
           created_at: string
           created_by: string
           deleted_at: string | null
+          extras: Json
           id: string
+          is_demo: boolean
           org_id: string
           origin_message_id: string | null
           origin_thread_id: string | null
           project_id: string | null
+          provider: string
           query: string
           security_label_source: string
           status: string
@@ -2827,11 +2830,14 @@ export type Database = {
           created_at?: string
           created_by: string
           deleted_at?: string | null
+          extras?: Json
           id?: string
+          is_demo?: boolean
           org_id: string
           origin_message_id?: string | null
           origin_thread_id?: string | null
           project_id?: string | null
+          provider?: string
           query: string
           security_label_source?: string
           status?: string
@@ -2845,11 +2851,14 @@ export type Database = {
           created_at?: string
           created_by?: string
           deleted_at?: string | null
+          extras?: Json
           id?: string
+          is_demo?: boolean
           org_id?: string
           origin_message_id?: string | null
           origin_thread_id?: string | null
           project_id?: string | null
+          provider?: string
           query?: string
           security_label_source?: string
           status?: string

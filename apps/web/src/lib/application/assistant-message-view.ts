@@ -46,9 +46,25 @@ type MessageLike = {
   citations?: StoredMessage["citations"];
 };
 
+const KNOWLEDGE_URI_RE =
+  /knowledge:\/\/document\/[0-9a-f-]+\/chunk\/[0-9a-f-]+/gi;
+const PAREN_GROUNDING_RE = /[（(]\s*根拠[:：][^）)]*[）)]/g;
+const LINE_GROUNDING_RE = /(?:^|\n)\s*根拠[:：][^\n]*/g;
+
+function sanitizeVisibleContent(text: string): string {
+  return text
+    .replace(KNOWLEDGE_URI_RE, "")
+    .replace(PAREN_GROUNDING_RE, "")
+    .replace(LINE_GROUNDING_RE, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /**
  * Map persisted thread messages into the assistant UI model.
  * Citations must pass through — dropping them empties the right pane on reload.
+ * Visible body strips internal URIs; structured citation.uri is kept for the pane.
  */
 export function toAssistantMessages(
   messages: readonly MessageLike[],
@@ -59,7 +75,7 @@ export function toAssistantMessages(
       id: m.id,
       threadId: m.threadId,
       role: m.role as "user" | "assistant",
-      content: m.content,
+      content: m.role === "assistant" ? sanitizeVisibleContent(m.content) : m.content,
       createdAt: m.createdAt,
       citations: (m.citations ?? []).map((c) => ({
         id: c.id,

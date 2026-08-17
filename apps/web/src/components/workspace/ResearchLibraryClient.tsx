@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ListRow, StatusBadge } from "@/components/ui/primitives";
 import { StartResearchButton, startWorkflowClient } from "@/components/chat/WorkflowActions";
 import { createDerivedViaApi } from "@/lib/application/chat-api-client";
+import { isDevSampleMode } from "@/lib/supabase/env";
 
 type LibraryItem = {
   id: string;
@@ -68,7 +69,9 @@ export function ResearchLibraryClient() {
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-[12px] text-text-secondary">
           完了した調査結果のライブラリです。新規調査はアシスタントで開始します。
-          Web Research バックエンド未接続時は確認用フローのみです（実検索済みとは表示しません）。
+          {isDevSampleMode()
+            ? " 確認用モードでは実検索は行いません。"
+            : " 公開情報の調査は接続済みの検索基盤を使います。"}
         </p>
         <StartResearchButton />
       </div>

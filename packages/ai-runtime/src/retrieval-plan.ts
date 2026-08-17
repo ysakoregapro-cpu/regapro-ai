@@ -40,6 +40,19 @@ export class DefaultRetrievalPlanner implements RetrievalPlanner {
       preferredDomainKeys: preferredDomains(input.access.departmentKey),
     };
 
+    if (signals.refuseWeb) {
+      return {
+        ...base,
+        intent: intent === "web_search" || intent === "deep_research" ? "internal_knowledge" : intent,
+        needInternalKnowledge: true,
+        needWeb: false,
+        needDeepResearch: false,
+        needProjectContext: true,
+        needDepartmentContext: true,
+        needCitations: true,
+      };
+    }
+
     switch (intent) {
       case "internal_knowledge":
         return {

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   PageHeader,
   SectionHeader,
@@ -7,7 +6,7 @@ import {
   EmptyState,
 } from "@/components/ui/primitives";
 import { HomeAskComposer } from "@/components/chat/HomeAskComposer";
-import { HomeToolGrid } from "@/components/chat/WorkflowActions";
+import { HomeToolGrid, StartNewChatButton } from "@/components/chat/WorkflowActions";
 import { getHomeDashboardAsync } from "@/lib/application/catalog-live";
 import { resolveAppSession } from "@/lib/application/session-access";
 import { projectName, userName } from "@/lib/application/catalog-service";
@@ -27,14 +26,7 @@ export default async function HomePage() {
       <PageHeader
         title={`${firstName}さん、今日も進めましょう`}
         description="何を進めますか？"
-        actions={
-          <Link
-            href="/assistant"
-            className="inline-flex h-9 items-center rounded-md bg-accent px-3 text-[13px] font-medium text-accent-fg hover:bg-accent-hover"
-          >
-            新しく依頼する
-          </Link>
-        }
+        actions={<StartNewChatButton />}
       />
 
       <HomeAskComposer

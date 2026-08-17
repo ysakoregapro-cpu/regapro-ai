@@ -14,13 +14,17 @@ import type { RetrievedItem, RetrievalPlan } from "../types.js";
 export type WebRunStats = {
   sanitizedQueryCount: number;
   pagesFetched: number;
+  browserSessions: number;
   sourceCount: number;
+  error?: string | null;
 };
 
 const EMPTY_STATS: WebRunStats = {
   sanitizedQueryCount: 0,
   pagesFetched: 0,
+  browserSessions: 0,
   sourceCount: 0,
+  error: null,
 };
 
 function toItems(
@@ -76,6 +80,7 @@ function statsFrom(result: WebResearchResult): WebRunStats {
   return {
     sanitizedQueryCount: result.queriesUsed.length,
     pagesFetched: result.pagesFetched,
+    browserSessions: result.browserSessions,
     sourceCount: result.sources.length,
   };
 }
@@ -99,17 +104,22 @@ export class WebIntelligenceRetriever implements WebRetriever {
     query: string;
   }): Promise<RetrievedItem[]> {
     if (!input.plan.needWeb) return [];
+    if (!this.connected) {
+      this.lastStats = { ...EMPTY_STATS, error: "WEB_SEARCH_UNCONFIGURED" };
+      throw new Error("WEB_SEARCH_UNCONFIGURED");
+    }
     try {
       const result = await runResearch(this.deps, {
         ...input,
-        needPageBodies: input.plan.needDeepResearch,
+        needPageBodies: true,
         allowBrowserEscalation: false,
       });
       this.lastStats = statsFrom(result);
       return toItems(result, "web");
-    } catch {
-      this.lastStats = EMPTY_STATS;
-      return [];
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "WEB_SEARCH_FAILED";
+      this.lastStats = { ...EMPTY_STATS, error: code };
+      throw err instanceof Error ? err : new Error(code);
     }
   }
 }
@@ -133,6 +143,10 @@ export class WebIntelligenceResearchRetriever implements ResearchRetriever {
     query: string;
   }): Promise<RetrievedItem[]> {
     if (!input.plan.needDeepResearch) return [];
+    if (!this.connected) {
+      this.lastStats = { ...EMPTY_STATS, error: "WEB_SEARCH_UNCONFIGURED" };
+      throw new Error("WEB_SEARCH_UNCONFIGURED");
+    }
     try {
       const result = await runResearch(this.deps, {
         ...input,
@@ -147,9 +161,10 @@ export class WebIntelligenceResearchRetriever implements ResearchRetriever {
       });
       this.lastStats = statsFrom(result);
       return toItems(result, "research");
-    } catch {
-      this.lastStats = EMPTY_STATS;
-      return [];
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "WEB_RESEARCH_FAILED";
+      this.lastStats = { ...EMPTY_STATS, error: code };
+      throw err instanceof Error ? err : new Error(code);
     }
   }
 }

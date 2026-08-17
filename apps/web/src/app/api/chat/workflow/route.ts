@@ -4,6 +4,7 @@ import { ConfidentialityLevelSchema, VisibilitySchema } from "@regapro/shared";
 import { startConversationWorkflowAsync } from "@/lib/application/data-gateway";
 import type { WorkflowType } from "@/lib/application/workflow-types";
 import { catchToJson } from "@/lib/application/api-errors";
+import { lastSafeRuntimeSnapshot } from "@/lib/application/runtime-snapshot";
 
 const WorkflowTypeSchema = z.enum([
   "general",
@@ -64,7 +65,10 @@ export async function POST(request: Request) {
       outputFormat: parsed.data.outputFormat,
     });
 
-    return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+    return NextResponse.json(
+      { ...result, runtime: lastSafeRuntimeSnapshot() },
+      { status: result.ok ? 200 : 400 },
+    );
   } catch (err) {
     return catchToJson(err);
   }

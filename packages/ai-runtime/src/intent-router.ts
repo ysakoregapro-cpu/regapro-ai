@@ -30,6 +30,15 @@ export class RuleBasedIntentRouter implements IntentRouter {
     const text = input.text.trim();
     const signals = extractRetrievalSignals(text);
 
+    if (signals.refuseWeb) {
+      return {
+        intent: "internal_knowledge",
+        confidence: 0.92,
+        reason: "refuse_web_internal_only",
+        provider: "rules",
+      };
+    }
+
     if (signals.wantDeep && (signals.wantWeb || signals.wantInternal)) {
       return {
         intent: "deep_research",
@@ -48,7 +57,7 @@ export class RuleBasedIntentRouter implements IntentRouter {
         },
         {
           intent: "web_search",
-          re: /調べて|調査|検索して|web|最新情報|ネットで|外部環境/,
+          re: /調べて|調査|検索して|web|最新情報|ネットで|外部環境/i,
           reason: "web_search_phrase",
         },
         {

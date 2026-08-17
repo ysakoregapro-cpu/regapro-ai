@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ConfidentialityLevelSchema } from "@regapro/shared";
 import { startChatFromHomeAsync } from "@/lib/application/data-gateway";
 import { catchToJson } from "@/lib/application/api-errors";
+import { lastSafeRuntimeSnapshot } from "@/lib/application/runtime-snapshot";
 
 const BodySchema = z.object({
   content: z.string(),
@@ -55,7 +56,10 @@ export async function POST(request: Request) {
     const status =
       result.ok ? 200 : result.code === "NEEDS_CONFIRMATION" ? 409 : 400;
 
-    return NextResponse.json(result, { status });
+    return NextResponse.json(
+      { ...result, runtime: lastSafeRuntimeSnapshot() },
+      { status },
+    );
   } catch (err) {
     return catchToJson(err);
   }

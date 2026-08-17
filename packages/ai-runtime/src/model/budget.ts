@@ -32,7 +32,7 @@ export class RuntimeBudgetGuard {
   }
 
   takeLlmCall(): boolean {
-    this.assertTime();
+    if (this.remainingMs() <= 0) return false;
     if (this.llmCalls >= this.budget.maxLlmCalls) return false;
     this.llmCalls += 1;
     return true;
