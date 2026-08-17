@@ -14,6 +14,21 @@ const DOMAIN_OPTIONS = [
   { key: "management", label: "経営" },
 ] as const;
 
+const VISIBILITY_OPTIONS = [
+  { key: "organization", label: "組織" },
+  { key: "department", label: "部門" },
+  { key: "project", label: "案件" },
+  { key: "participants", label: "関係者" },
+  { key: "restricted", label: "制限付き" },
+  { key: "private", label: "自分のみ" },
+] as const;
+
+const CLEARANCE_OPTIONS = [
+  { key: "company", label: "全社（L1）" },
+  { key: "people", label: "人事・管理（L2）" },
+  { key: "executive", label: "経営戦略（L3）" },
+] as const;
+
 type DocRow = {
   id: string;
   title: string;
@@ -105,6 +120,8 @@ export function KnowledgeAdminClient({
   const [expert, setExpert] = useState("");
   const [url, setUrl] = useState("");
   const [domainKey, setDomainKey] = useState("company_common");
+  const [clearanceLevel, setClearanceLevel] = useState("company");
+  const [visibility, setVisibility] = useState("organization");
   const [sourceDate, setSourceDate] = useState("");
   const [authoritativeSeed, setAuthoritativeSeed] = useState(false);
   const [reviewQuery, setReviewQuery] = useState("");
@@ -251,12 +268,13 @@ export function KnowledgeAdminClient({
     });
   }
 
-  function uploadFiles(list: FileList | null) {
+  function previewFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
     startTransition(async () => {
       setError(null);
       setNotice(null);
       const form = new FormData();
+      form.set("preview", "1");
       for (const file of Array.from(list)) form.append("files", file);
       const res = await fetch("/api/knowledge/factory", {
         method: "POST",
@@ -264,16 +282,35 @@ export function KnowledgeAdminClient({
       });
       const json = (await res.json()) as {
         error?: string;
-        results?: Array<{ name: string; ok: boolean }>;
+        previews?: Array<{
+          filename: string;
+          title: string;
+          text: string;
+          limitation: string | null;
+          charCount: number;
+        }>;
       };
       if (!res.ok) {
-        setError(json.error ?? "ファイル取り込みに失敗しました");
+        setError(json.error ?? "ファイルを読み取れませんでした");
         return;
       }
-      const ok = (json.results ?? []).filter((r) => r.ok).length;
-      const ng = (json.results ?? []).length - ok;
-      setNotice(`${ok} 件を投入しました${ng ? `（${ng} 件は個別に失敗）` : ""}`);
-      refreshJobs();
+      const first = json.previews?.[0];
+      if (!first) {
+        setError("ファイルを読み取れませんでした");
+        return;
+      }
+      if (!title.trim()) setTitle(first.title);
+      if (first.text) setBody(first.text);
+      const extra = (json.previews?.length ?? 1) - 1;
+      if (first.limitation && !first.text) {
+        setError(`${first.filename}: 本文を抽出できませんでした（${first.limitation}）`);
+        return;
+      }
+      setNotice(
+        extra > 0
+          ? `${first.filename} から本文を読みました。大量投入は CLI を使ってください。`
+          : `${first.filename} から本文を読みました。領域と閲覧権限を確認して取り込んでください。`,
+      );
     });
   }
 
@@ -371,14 +408,26 @@ export function KnowledgeAdminClient({
         <section className="space-y-3">
           <h2 className="text-[14px] font-medium text-text">テキスト・URL・ファイル</h2>
           <p className="text-[12px] text-text-secondary">
-            原文を保持したまま候補を作ります。公開はレビュー後です。巨大な資料は分割して処理します。
+            原文を保持したまま候補を作ります。公開はレビュー後です。領域は検索対象、閲覧権限は誰が見られるかで、別々に選びます。大量投入は CLI を使います。
           </p>
+          <label className={labelClass}>
+            ファイル（txt / md / PDF / DOCX / XLSX / CSV）
+            <input
+              className="mt-1 block text-[13px]"
+              type="file"
+              accept=".txt,.md,.csv,.pdf,.docx,.xlsx,text/plain,text/markdown,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={(e) => {
+                previewFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </label>
           <label className={labelClass}>
             タイトル
             <input className={fieldClass} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
           </label>
           <label className={labelClass}>
-            本文（貼り付け）
+            本文
             <textarea
               className={`${fieldClass} min-h-[120px]`}
               value={body}
@@ -386,9 +435,33 @@ export function KnowledgeAdminClient({
             />
           </label>
           <label className={labelClass}>
-            領域
+            領域（検索・参照対象）
             <select className={fieldClass} value={domainKey} onChange={(e) => setDomainKey(e.target.value)}>
               {DOMAIN_OPTIONS.map((d) => (
+                <option key={d.key} value={d.key}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={labelClass}>
+            閲覧権限（機密区分）
+            <select
+              className={fieldClass}
+              value={clearanceLevel}
+              onChange={(e) => setClearanceLevel(e.target.value)}
+            >
+              {CLEARANCE_OPTIONS.map((d) => (
+                <option key={d.key} value={d.key}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={labelClass}>
+            公開範囲
+            <select className={fieldClass} value={visibility} onChange={(e) => setVisibility(e.target.value)}>
+              {VISIBILITY_OPTIONS.map((d) => (
                 <option key={d.key} value={d.key}>
                   {d.label}
                 </option>
@@ -410,7 +483,7 @@ export function KnowledgeAdminClient({
               checked={authoritativeSeed}
               onChange={(e) => setAuthoritativeSeed(e.target.checked)}
             />
-            現在確定している会社情報（シード）。レビューは省略しません。
+            現在確定している会社情報（シード）。1件が1候補になり、レビューは省略しません。
           </label>
           <button
             type="button"
@@ -419,9 +492,12 @@ export function KnowledgeAdminClient({
             onClick={() =>
               ingest({
                 originKind: authoritativeSeed ? "authoritative_seed" : "paste",
+                importMode: authoritativeSeed ? "structured" : "source",
                 title,
                 text: body,
                 domainKeys: [domainKey],
+                confidentialityLevel: clearanceLevel,
+                visibility,
                 sourceDate: sourceDate || undefined,
               })
             }
@@ -447,21 +523,13 @@ export function KnowledgeAdminClient({
                 title: title || url,
                 url,
                 domainKeys: [domainKey],
+                confidentialityLevel: clearanceLevel,
+                visibility,
               })
             }
           >
             URLから取り込む
           </button>
-          <label className={labelClass}>
-            ファイル（txt / md / PDF / DOCX / XLSX / CSV、複数可）
-            <input
-              className="mt-1 block text-[13px]"
-              type="file"
-              multiple
-              accept=".txt,.md,.csv,.pdf,.docx,.xlsx,text/plain,text/markdown,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              onChange={(e) => uploadFiles(e.target.files)}
-            />
-          </label>
         </section>
       ) : null}
 
@@ -469,7 +537,7 @@ export function KnowledgeAdminClient({
         <section className="space-y-3">
           <h2 className="text-[14px] font-medium text-text">Q&Aを追加</h2>
           <p className="text-[12px] text-text-secondary">
-            原文の質問と回答は残します。一般化した原則は別候補としてレビューできます。
+            原文の質問と回答は残します。人物名は情報源として保持できます。公開はレビュー後です。
           </p>
           <label className={labelClass}>
             質問
@@ -492,9 +560,33 @@ export function KnowledgeAdminClient({
             <input className={fieldClass} value={expert} onChange={(e) => setExpert(e.target.value)} />
           </label>
           <label className={labelClass}>
-            領域
+            領域（検索・参照対象）
             <select className={fieldClass} value={domainKey} onChange={(e) => setDomainKey(e.target.value)}>
               {DOMAIN_OPTIONS.map((d) => (
+                <option key={d.key} value={d.key}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={labelClass}>
+            閲覧権限（機密区分）
+            <select
+              className={fieldClass}
+              value={clearanceLevel}
+              onChange={(e) => setClearanceLevel(e.target.value)}
+            >
+              {CLEARANCE_OPTIONS.map((d) => (
+                <option key={d.key} value={d.key}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={labelClass}>
+            公開範囲
+            <select className={fieldClass} value={visibility} onChange={(e) => setVisibility(e.target.value)}>
+              {VISIBILITY_OPTIONS.map((d) => (
                 <option key={d.key} value={d.key}>
                   {d.label}
                 </option>
@@ -517,11 +609,14 @@ export function KnowledgeAdminClient({
             onClick={() =>
               ingest({
                 originKind: "qa",
+                importMode: "qa",
                 title: question.slice(0, 120),
                 question,
                 answer,
                 expertName: expert || undefined,
                 domainKeys: [domainKey],
+                confidentialityLevel: clearanceLevel,
+                visibility,
                 sourceDate: sourceDate || undefined,
               })
             }

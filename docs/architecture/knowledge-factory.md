@@ -39,7 +39,11 @@ dry-run が過去 migration を再適用しようとする場合は、revert し
 
 ## Ingestion
 
-入口: テキスト貼付 / 確定シード (`authoritative_seed`) / Q&A / ファイル（txt, md, csv, PDF, DOCX, XLSX） / URL / Web Research / 会話キャプチャ / transcript / 将来 API（`origin_kind=api`）。
+入口: **Bulk CLI**（正式な大量投入） / テキスト貼付 / 確定シード (`authoritative_seed`) / Q&A / ファイル（txt, md, csv, PDF, DOCX, XLSX） / URL / Web Research / 会話キャプチャ / transcript / 将来 API（`origin_kind=api`）。
+
+CLI は Factory を置き換えない。`structured` は 1 item → 1 Candidate（Review まで、自動 Publish しない）。`source` は既存 Job / Extractor 経路。手順は [knowledge-bulk-import.md](../operations/knowledge-bulk-import.md)。
+
+Domain（retrieval 対象）と Security（clearance / visibility）は別概念。Domain から clearance を推定しない。
 
 1. checksum（本文 `content_hash` またはファイル `checksum`）で同一 Source の重複投入を防ぐ  
 2. budget 設定で決定的チャンク分割  

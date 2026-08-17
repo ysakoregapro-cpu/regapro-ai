@@ -2,15 +2,16 @@ import { parseStructuredExtraction } from "./extraction-schema.js";
 import type { KnowledgeFactStatus } from "./factory-types.js";
 
 export type ExtractionEvalCase = {
-  id: "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H";
+  id: "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J";
   title: string;
   source: string;
   originKind: "paste" | "qa" | "conversation";
   expect: {
-    factStatus: KnowledgeFactStatus;
+    factStatus?: KnowledgeFactStatus;
     isCurrent?: boolean;
     skippedPrivate?: boolean;
     minCandidates?: number;
+    maxCandidates?: number;
   };
 };
 
@@ -72,6 +73,21 @@ export const KNOWLEDGE_EXTRACTION_EVAL_CASES: ExtractionEvalCase[] = [
     source: "有料職業紹介の許可は未取得である。有料職業紹介の許可は取得済みである。",
     expect: { factStatus: "fact", minCandidates: 1 },
   },
+  {
+    id: "I",
+    title: "粒度: 再利用単位",
+    originKind: "paste",
+    source:
+      "RegaloProfessional の運用原則。仕事を振る前に範囲と期限を合意する。見積は提出前に二人確認する。許可取得済みの事業は現在実施中として扱う。個人の役職や価値観は原則にしない。",
+    expect: { factStatus: "fact", minCandidates: 1, maxCandidates: 3 },
+  },
+  {
+    id: "J",
+    title: "個人プロフィールは候補化しない",
+    originKind: "conversation",
+    source: "酒匂のAIに対する考え方として、役職は代表で個人的な価値観はこうだ。",
+    expect: { skippedPrivate: true, minCandidates: 0, maxCandidates: 0 },
+  },
 ];
 
 export function scoreExtractionEval(input: {
@@ -87,6 +103,15 @@ export function scoreExtractionEval(input: {
   }
   if ((parsed.value.candidates.length) < (spec.expect.minCandidates ?? 0)) {
     return { pass: false, reason: "too_few_candidates" };
+  }
+  if (
+    spec.expect.maxCandidates != null &&
+    parsed.value.candidates.length > spec.expect.maxCandidates
+  ) {
+    return { pass: false, reason: "too_many_candidates" };
+  }
+  if (!spec.expect.factStatus) {
+    return { pass: true, reason: "ok" };
   }
   const hit = parsed.value.candidates.find((c) => c.factStatus === spec.expect.factStatus);
   if (!hit) return { pass: false, reason: `missing_status_${spec.expect.factStatus}` };

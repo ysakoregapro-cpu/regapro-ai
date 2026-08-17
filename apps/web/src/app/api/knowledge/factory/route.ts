@@ -6,6 +6,7 @@ import { isDevSampleMode } from "@/lib/supabase/env";
 import { ConfidentialityLevelSchema, VisibilitySchema } from "@regapro/shared";
 import {
   GenericTranscriptIngestPort,
+  KnowledgeDomainKeySchema,
   KnowledgeOriginKind,
   KnowledgeReviewStatus,
   transcriptToReusableText,
@@ -14,12 +15,14 @@ import {
   batchReviewCandidates,
   cancelIngestionJob,
   createKnowledgeSourceAndJob,
+  createStructuredKnowledgeItem,
   factoryCounts,
   ingestFileSource,
   ingestUrlSource,
   listIngestionJobs,
   listReviewInbox,
   pauseIngestionJob,
+  previewExtractedSource,
   previewSourceDelete,
   processIngestionJob,
   processIngestionJobUntilIdle,
@@ -39,12 +42,19 @@ const IngestSchema = z.object({
   question: z.string().max(4000).optional(),
   answer: z.string().max(20_000).optional(),
   url: z.string().url().optional(),
-  domainKeys: z.array(z.string()).optional(),
+  domainKeys: z.array(KnowledgeDomainKeySchema).optional(),
   sourceDate: z.string().optional(),
   confidentialityLevel: ConfidentialityLevelSchema.default("company"),
   visibility: VisibilitySchema.default("organization"),
   expertName: z.string().max(120).optional(),
   transcript: z.unknown().optional(),
+  importMode: z.enum(["structured", "source", "qa"]).optional(),
+  importItemId: z.string().min(1).max(120).optional(),
+  candidateType: z.string().optional(),
+  factStatus: z.string().optional(),
+  isCurrent: z.boolean().optional(),
+  sourceQuality: z.number().min(0).max(1).optional(),
+  tags: z.array(z.string()).optional(),
 });
 
 const ProcessSchema = z.object({
@@ -147,6 +157,47 @@ export async function POST(req: Request) {
     if (files.length === 0) {
       return NextResponse.json({ error: "ファイルがありません" }, { status: 400 });
     }
+    const preview = form.get("preview") === "1" || form.get("preview") === "true";
+    if (preview) {
+      const previews = [];
+      for (const file of files) {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        previews.push(
+          previewExtractedSource({
+            filename: file.name,
+            mimeType: file.type || "application/octet-stream",
+            bytes,
+          }),
+        );
+      }
+      return NextResponse.json({ ok: true, previews });
+    }
+    const domainRaw = String(form.get("domainKeys") ?? "company_common");
+    const domainKeys = domainRaw
+      .split(",")
+      .map((d) => d.trim())
+      .filter(Boolean);
+    const parsedDomains = z.array(KnowledgeDomainKeySchema).safeParse(domainKeys);
+    if (!parsedDomains.success) {
+      return NextResponse.json({ error: "不明な領域です" }, { status: 400 });
+    }
+    const confidentialityLevel = ConfidentialityLevelSchema.catch("company").parse(
+      form.get("confidentialityLevel") || "company",
+    );
+    const visibility = VisibilitySchema.catch("organization").parse(
+      form.get("visibility") || "organization",
+    );
+    const originKind = KnowledgeOriginKind.catch("file").parse(
+      form.get("originKind") || "file",
+    );
+    const importModeRaw = String(form.get("importMode") || "");
+    const importMode =
+      importModeRaw === "structured" || importModeRaw === "source" || importModeRaw === "qa"
+        ? importModeRaw
+        : originKind === "authoritative_seed"
+          ? "structured"
+          : undefined;
+    const title = String(form.get("title") || "").trim();
     const results: Array<{
       name: string;
       ok: boolean;
@@ -161,6 +212,12 @@ export async function POST(req: Request) {
         filename: file.name,
         mimeType: file.type || "application/octet-stream",
         bytes,
+        originKind,
+        domainKeys: parsedDomains.data,
+        confidentialityLevel,
+        visibility,
+        title: title || undefined,
+        importMode,
       });
       results.push(result);
     }
@@ -307,7 +364,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, ...created });
     }
 
-    const created = await createKnowledgeSourceAndJob(client, {
+    const createdInput = {
       orgId: session.access.organizationId,
       userId: session.access.userId,
       access: session.access,
@@ -321,7 +378,26 @@ export async function POST(req: Request) {
       visibility: data.visibility,
       domainKeys: data.domainKeys,
       sourceDate: data.sourceDate ?? null,
-    });
+      importMode: data.importMode,
+      importItemId: data.importItemId,
+      isCurrent: data.isCurrent,
+      sourceQuality: data.sourceQuality,
+      tags: data.tags,
+      expertName: data.expertName,
+    };
+    const useStructured =
+      data.importMode === "structured" ||
+      data.importMode === "qa" ||
+      data.originKind === "authoritative_seed" ||
+      data.originKind === "qa";
+    if (useStructured) {
+      const created = await createStructuredKnowledgeItem(client, {
+        ...createdInput,
+        importMode: data.importMode === "qa" ? "qa" : "structured",
+      });
+      return NextResponse.json({ ok: true, ...created });
+    }
+    const created = await createKnowledgeSourceAndJob(client, createdInput);
     if (!created.duplicate) {
       await processIngestionJob(client, {
         jobId: created.jobId,

@@ -6,6 +6,7 @@ import {
   KnowledgeIngestionBudgetGuard,
   LlmKnowledgeExtractionProvider,
   assertNoSecurityPromotion,
+  buildStructuredImportRecords,
   canBatchApprove,
   classifyKnowledgeConflict,
   extractSourceText,
@@ -15,9 +16,12 @@ import {
   sha256Hex,
   sourceQualityForOrigin,
   splitKnowledgeBody,
+  titleFromFilename,
+  KnowledgeDomainKeySchema,
   type KnowledgeExtractionCache,
   type KnowledgeOriginKind,
   type KnowledgeReviewStatus,
+  type ResolvedImportItem,
 } from "@regapro/knowledge";
 import {
   canAssignConfidentialityLevel,
@@ -75,6 +79,16 @@ export type FactorySourceInput = {
   checksum?: string | null;
   requiresOcr?: boolean;
   skipImmediateProcess?: boolean;
+  importItemId?: string;
+  importMode?: "structured" | "source" | "qa";
+  candidateType?: ResolvedImportItem["candidateType"];
+  factStatus?: ResolvedImportItem["factStatus"];
+  isCurrent?: boolean;
+  sourceQuality?: number;
+  tags?: string[];
+  validFrom?: string | null;
+  validUntil?: string | null;
+  expertName?: string | null;
 };
 
 function clampLevel(
@@ -293,6 +307,8 @@ export async function createKnowledgeSourceAndJob(
         answer: input.answer ?? null,
         domainKeys: input.domainKeys ?? ["company_common"],
         sourceQuality: sourceQualityForOrigin(input.originKind),
+        importItemId: input.importItemId ?? null,
+        importMode: input.importMode ?? null,
       },
       contains_personal_conversation: Boolean(input.containsPersonalConversation),
     })
@@ -325,6 +341,265 @@ export async function createKnowledgeSourceAndJob(
       .eq("id", job.id);
   }
   return { sourceId: source.id, jobId: job.id, duplicate: false };
+}
+
+function toResolvedImportItem(input: FactorySourceInput): ResolvedImportItem {
+  const importMode = input.importMode ?? (input.originKind === "qa" ? "qa" : "structured");
+  const content = input.text;
+  const contentHash = sha256Hex(content);
+  const domains = (input.domainKeys ?? [])
+    .map((key) => KnowledgeDomainKeySchema.safeParse(key))
+    .filter((r): r is { success: true; data: ResolvedImportItem["domains"][number] } => r.success)
+    .map((r) => r.data);
+  return {
+    id: input.importItemId ?? `ui-${contentHash.slice(0, 20)}`,
+    title: input.title,
+    importMode: importMode === "source" ? "structured" : importMode,
+    domains: domains.length ? (domains as ResolvedImportItem["domains"]) : ["company_common"],
+    clearanceLevel: input.confidentialityLevel,
+    visibility: input.visibility,
+    departmentId: input.departmentId ?? null,
+    projectId: input.projectId ?? null,
+    candidateType: input.candidateType ?? (input.originKind === "qa" ? "qa" : "policy"),
+    factStatus: input.factStatus ?? "fact",
+    isCurrent: input.isCurrent ?? true,
+    sourceDate: input.sourceDate ?? null,
+    validFrom: input.validFrom ?? null,
+    validUntil: input.validUntil ?? null,
+    sourceQuality: input.sourceQuality ?? sourceQualityForOrigin(input.originKind),
+    tags: input.tags ?? [],
+    authoritativeSeed: input.originKind === "authoritative_seed",
+    question: input.question ?? null,
+    answer: input.answer ?? null,
+    expertName: input.expertName ?? null,
+    file: input.originalFilename ?? null,
+    content,
+    contentHash,
+    checksum: input.checksum ?? contentHash,
+    charCount: content.length,
+  };
+}
+
+export async function createStructuredKnowledgeItem(
+  client: Client,
+  input: FactorySourceInput,
+): Promise<{
+  sourceId: string;
+  jobId: string;
+  candidateId: string | null;
+  duplicate: boolean;
+  published: false;
+}> {
+  requireWrite(input.access);
+  const level = clampLevel(input.access, input.confidentialityLevel);
+  const item = toResolvedImportItem({ ...input, confidentialityLevel: level });
+  const hash = item.contentHash;
+
+  const { data: byItem } = await client
+    .from("knowledge_sources")
+    .select("id")
+    .eq("org_id", input.orgId)
+    .contains("metadata", { importItemId: item.id })
+    .is("deleted_at", null)
+    .maybeSingle();
+  const { data: byHash } = await client
+    .from("knowledge_sources")
+    .select("id")
+    .eq("org_id", input.orgId)
+    .eq("content_hash", hash)
+    .is("deleted_at", null)
+    .maybeSingle();
+  const existingId = byItem?.id ?? byHash?.id;
+  if (existingId) {
+    const { data: existingCand } = await client
+      .from("knowledge_candidates")
+      .select("id")
+      .eq("source_id", existingId)
+      .is("deleted_at", null)
+      .limit(1)
+      .maybeSingle();
+    const { data: job } = await client
+      .from("knowledge_ingestion_jobs")
+      .select("id")
+      .eq("source_id", existingId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return {
+      sourceId: existingId,
+      jobId: job?.id ?? existingId,
+      candidateId: existingCand?.id ?? null,
+      duplicate: true,
+      published: false,
+    };
+  }
+
+  const { data: publishedDocs } = await client
+    .from("knowledge_documents")
+    .select("id, title, fact_status, is_current, source_quality, source_type")
+    .eq("org_id", input.orgId)
+    .eq("status", "published")
+    .is("deleted_at", null)
+    .limit(80);
+  const publishedIds = (publishedDocs ?? []).map((d) => d.id);
+  const bodyByDoc = new Map<string, string>();
+  if (publishedIds.length) {
+    const { data: versions } = await client
+      .from("knowledge_document_versions")
+      .select("document_id, body, version_number")
+      .in("document_id", publishedIds)
+      .is("deleted_at", null);
+    const latest = new Map<string, { n: number; body: string }>();
+    for (const v of versions ?? []) {
+      const prev = latest.get(v.document_id);
+      if (!prev || v.version_number > prev.n) {
+        latest.set(v.document_id, { n: v.version_number, body: v.body });
+      }
+    }
+    for (const [id, row] of latest) bodyByDoc.set(id, row.body);
+  }
+  const published = (publishedDocs ?? []).map((d) => ({
+    id: d.id,
+    title: d.title,
+    body: bodyByDoc.get(d.id) ?? d.title,
+    factStatus: d.fact_status,
+    current: d.is_current,
+    sourceQuality: d.source_quality,
+    originKind: d.source_type,
+  }));
+
+  const records = buildStructuredImportRecords({ item, existingPublished: published });
+  const { data: source, error: sErr } = await client
+    .from("knowledge_sources")
+    .insert({
+      ...(input.sourceId ? { id: input.sourceId } : {}),
+      org_id: input.orgId,
+      name: records.source.name,
+      source_type: records.source.source_type,
+      origin_kind: records.source.origin_kind,
+      raw_text: records.source.raw_text,
+      normalized_text: records.source.normalized_text,
+      content_hash: records.source.content_hash,
+      checksum: records.source.checksum,
+      file_object_id: input.fileObjectId ?? null,
+      storage_path: input.storagePath ?? null,
+      original_filename: input.originalFilename ?? null,
+      mime_type: input.mimeType ?? null,
+      size_bytes: input.sizeBytes ?? null,
+      confidentiality_level: records.source.confidentiality_level,
+      visibility: records.source.visibility,
+      owner_user_id: input.userId,
+      department_id: records.source.department_id,
+      project_id: records.source.project_id,
+      source_date: records.source.source_date,
+      observed_at: new Date().toISOString(),
+      metadata: records.source.metadata,
+    })
+    .select("id")
+    .single();
+  if (sErr || !source) throw new Error(sErr?.message ?? "source insert failed");
+
+  const { data: job, error: jErr } = await client
+    .from("knowledge_ingestion_jobs")
+    .insert({
+      org_id: input.orgId,
+      source_id: source.id,
+      status: records.job.status,
+      created_by: input.userId,
+      total_units: records.job.total_units,
+      processed_units: records.job.processed_units,
+      failed_units: records.job.failed_units,
+      completed_at: new Date().toISOString(),
+      budget: DEFAULT_KNOWLEDGE_INGESTION_BUDGET,
+    })
+    .select("id")
+    .single();
+  if (jErr || !job) throw new Error(jErr?.message ?? "job insert failed");
+
+  const { data: chunk, error: cErr } = await client
+    .from("knowledge_source_chunks")
+    .insert({
+      org_id: input.orgId,
+      source_id: source.id,
+      job_id: job.id,
+      chunk_index: records.chunk.chunk_index,
+      content: records.chunk.content,
+      content_hash: records.chunk.content_hash,
+      status: records.chunk.status,
+    })
+    .select("id")
+    .single();
+  if (cErr || !chunk) throw new Error(cErr?.message ?? "chunk insert failed");
+
+  const { data: candidate, error: candErr } = await client.from("knowledge_candidates").insert({
+    org_id: input.orgId,
+    title: records.candidate.title,
+    content: records.candidate.content,
+    content_hash: records.candidate.content_hash,
+    suggested_confidentiality_level: records.candidate.suggested_confidentiality_level,
+    suggested_visibility: records.candidate.suggested_visibility,
+    source_user_id: input.userId,
+    source_id: source.id,
+    source_chunk_id: chunk.id,
+    source_excerpt: records.candidate.source_excerpt,
+    candidate_type: records.candidate.candidate_type,
+    fact_status: records.candidate.fact_status,
+    review_status: records.candidate.review_status,
+    domain_keys: records.candidate.domain_keys,
+    summary: records.candidate.summary,
+    tags: records.candidate.tags,
+    conflict_kind: records.candidate.conflict_kind,
+    conflict_reason: records.candidate.conflict_reason,
+    supersedes_document_id: records.candidate.supersedes_document_id,
+    confidence: records.candidate.confidence,
+    source_quality: records.candidate.source_quality,
+    is_current: records.candidate.is_current,
+    valid_from: records.candidate.valid_from,
+    valid_until: records.candidate.valid_until,
+    source_date: records.candidate.source_date,
+    extracted_at: new Date().toISOString(),
+    extractor_type: records.candidate.extractor_type,
+    extractor_version: records.candidate.extractor_version,
+    prompt_version: records.candidate.prompt_version,
+    status: records.candidate.status,
+  }).select("id").single();
+  if (candErr || !candidate) throw new Error(candErr?.message ?? "candidate insert failed");
+
+  return {
+    sourceId: source.id,
+    jobId: job.id,
+    candidateId: candidate.id,
+    duplicate: false,
+    published: false,
+  };
+}
+
+export function previewExtractedSource(input: {
+  filename: string;
+  mimeType: string;
+  bytes: Uint8Array;
+}): {
+  filename: string;
+  title: string;
+  text: string;
+  limitation: string | null;
+  requiresOcr: boolean;
+  charCount: number;
+} {
+  const extracted = extractSourceText({
+    mimeType: input.mimeType,
+    filename: input.filename,
+    bytes: input.bytes,
+  });
+  return {
+    filename: input.filename,
+    title: titleFromFilename(input.filename),
+    text: extracted.text ?? "",
+    limitation: extracted.limitation,
+    requiresOcr: Boolean(extracted.requiresOcr || extracted.limitation === "requires_ocr"),
+    charCount: (extracted.text ?? "").length,
+  };
 }
 
 export async function processIngestionJob(
@@ -1399,6 +1674,8 @@ export async function ingestFileSource(
     domainKeys?: string[];
     confidentialityLevel?: ConfidentialityLevel;
     visibility?: Visibility;
+    title?: string;
+    importMode?: "structured" | "source" | "qa";
   },
 ): Promise<{
   name: string;
@@ -1415,6 +1692,9 @@ export async function ingestFileSource(
     bytes: input.bytes,
   });
   const sourceId = globalThis.crypto.randomUUID();
+  const title = (input.title?.trim() || titleFromFilename(input.filename)).slice(0, 200);
+  const structured =
+    input.importMode === "structured" || input.originKind === "authoritative_seed";
   let stored: { fileObjectId: string; path: string; checksum: string; size: number } | null =
     null;
   try {
@@ -1437,26 +1717,31 @@ export async function ingestFileSource(
     };
   }
 
+  const common = {
+    orgId: input.access.organizationId,
+    userId: input.access.userId,
+    access: input.access,
+    sourceId,
+    originKind: input.originKind ?? "file",
+    title,
+    fileObjectId: stored.fileObjectId,
+    storagePath: stored.path,
+    originalFilename: input.filename,
+    mimeType: input.mimeType,
+    sizeBytes: stored.size,
+    checksum: stored.checksum,
+    confidentialityLevel: input.confidentialityLevel ?? "company",
+    visibility: input.visibility ?? "organization",
+    domainKeys: input.domainKeys ?? ["company_common"],
+    importMode: input.importMode,
+  } as const;
+
   if (!extracted.text) {
     try {
       const created = await createKnowledgeSourceAndJob(client, {
-        orgId: input.access.organizationId,
-        userId: input.access.userId,
-        access: input.access,
-        sourceId,
-        originKind: input.originKind ?? "file",
-        title: input.filename.slice(0, 200),
+        ...common,
         text: "",
-        fileObjectId: stored.fileObjectId,
-        storagePath: stored.path,
-        originalFilename: input.filename,
-        mimeType: input.mimeType,
-        sizeBytes: stored.size,
-        checksum: stored.checksum,
         requiresOcr: Boolean(extracted.requiresOcr || extracted.limitation === "requires_ocr"),
-        confidentialityLevel: input.confidentialityLevel ?? "company",
-        visibility: input.visibility ?? "organization",
-        domainKeys: input.domainKeys ?? ["company_common"],
       });
       return {
         name: input.filename,
@@ -1481,23 +1766,23 @@ export async function ingestFileSource(
   }
 
   try {
+    if (structured) {
+      const created = await createStructuredKnowledgeItem(client, {
+        ...common,
+        text: extracted.text,
+        importMode: "structured",
+      });
+      return {
+        name: input.filename,
+        ok: true,
+        sourceId: created.sourceId,
+        jobId: created.jobId,
+        duplicate: created.duplicate,
+      };
+    }
     const created = await createKnowledgeSourceAndJob(client, {
-      orgId: input.access.organizationId,
-      userId: input.access.userId,
-      access: input.access,
-      sourceId,
-      originKind: input.originKind ?? "file",
-      title: input.filename.slice(0, 200),
+      ...common,
       text: extracted.text,
-      fileObjectId: stored.fileObjectId,
-      storagePath: stored.path,
-      originalFilename: input.filename,
-      mimeType: input.mimeType,
-      sizeBytes: stored.size,
-      checksum: stored.checksum,
-      confidentialityLevel: input.confidentialityLevel ?? "company",
-      visibility: input.visibility ?? "organization",
-      domainKeys: input.domainKeys ?? ["company_common"],
     });
     if (!created.duplicate) {
       await processIngestionJob(client, {

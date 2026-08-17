@@ -20,7 +20,7 @@ export async function runAllCases(reporter, fx) {
   await runDerived(reporter, { sales, hr, exec, ids });
   await runWrites(reporter, { sales, hr, exec, adminFix, ids, ctx, runId });
   await runStorage(reporter, { sales, hr, exec, adminFix, ids, fx });
-  await runKnowledge(reporter, { sales, hr, exec, adminFix, ids });
+  await runKnowledge(reporter, { sales, hr, exec, adminFix, ids, runId });
   await runNoMembership(reporter, { none, ids, ctx });
 }
 
@@ -724,7 +724,7 @@ async function runNoMembership(reporter, { none, ids, ctx }) {
   }
 }
 
-async function runKnowledge(reporter, { sales, hr, exec, adminFix, ids }) {
+async function runKnowledge(reporter, { sales, hr, exec, adminFix, ids, runId }) {
   console.log("\n--- Knowledge hybrid retrieval ---");
 
   reporter.expectRows(
@@ -903,7 +903,7 @@ async function runKnowledge(reporter, { sales, hr, exec, adminFix, ids }) {
 
   const cacheAsNoneShape = {
     org_id: ids.orgId,
-    source_chunk_hash: "rls-hardening",
+    source_chunk_hash: `rls-hardening-${runId}`,
     extractor_type: "llm",
     extractor_version: "llm-extractor-v1",
     model_id: "none",
@@ -918,7 +918,7 @@ async function runKnowledge(reporter, { sales, hr, exec, adminFix, ids }) {
     await adminFix.client
       .from("knowledge_extraction_cache")
       .delete()
-      .eq("source_chunk_hash", "rls-hardening")
+      .eq("source_chunk_hash", `rls-hardening-${runId}`)
       .eq("org_id", ids.orgId);
   }
 

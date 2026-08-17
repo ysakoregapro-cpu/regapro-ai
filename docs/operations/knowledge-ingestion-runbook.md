@@ -21,15 +21,17 @@ npm run db:gen-types
 
 ## 2. 最初の本番投入（確定情報シード）
 
-実会社 Knowledge をリポジトリに置かない。UI または将来の API から 5〜20 件の **現在確定している会社情報** を入れる。
+実会社 Knowledge をリポジトリに置かない。**正式な大量投入は Bulk CLI**。UI は少量の確認用。
 
-1. Workspace → ナレッジ → 取り込む  
-2. 「現在確定している会社情報（シード）」をオン  
-3. タイトル・本文・領域・日付を入力  
-4. 候補として取り込む（自動公開しない）  
-5. レビューで excerpt・現在/過去・矛盾を確認して承認  
+1. ローカルに `.local/knowledge-import/current-seed/` を用意（`.gitignore` 済み）
+2. `manifest.json` で Domain と Clearance を**別々に**指定する
+3. `npm run knowledge:import -- ".\.local\knowledge-import\current-seed" --dry-run`
+4. 問題なければ同じコマンドから `--dry-run` を外して投入
+5. Review Inbox で承認してから Publish。CLI は自動公開しない
 
-同じテーマの古い会話（例: 許可取得準備中）より、シード（許可取得済み）が current 検索で優先される。古い事実は supersede で historical にする。一括承認しない。
+同じテーマの古い会話（例: 許可取得準備中）より、シード（許可取得済み）が current 検索で優先される。古い事実は物理削除せず、supersede で historical にする。一括承認しない。
+
+詳細手順は [knowledge-bulk-import.md](./knowledge-bulk-import.md)。
 
 ## 3. 大量ファイル / 会話
 

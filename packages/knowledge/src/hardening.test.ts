@@ -337,7 +337,7 @@ describe("private transcript filtering / storage / parse", () => {
   });
 });
 
-describe("extraction evaluation fixtures A-H", () => {
+describe("extraction evaluation fixtures A-J", () => {
   it("scores structured outputs against expected statuses", () => {
     const samples: Record<(typeof KNOWLEDGE_EXTRACTION_EVAL_CASES)[number]["id"], string> = {
       A: validJson({ factStatus: "fact", isCurrent: true }),
@@ -353,11 +353,36 @@ describe("extraction evaluation fixtures A-H", () => {
       F: validJson({ factStatus: "decision", title: "二人確認" }),
       G: validJson({ factStatus: "fact" }),
       H: validJson({ factStatus: "fact" }),
+      I: validJson({ factStatus: "fact", title: "運用原則" }),
+      J: JSON.stringify({ candidates: [], skippedPrivate: true }),
     };
     for (const spec of KNOWLEDGE_EXTRACTION_EVAL_CASES) {
       const scored = scoreExtractionEval({ caseId: spec.id, jsonText: samples[spec.id] });
       expect(scored.pass, spec.id + scored.reason).toBe(true);
     }
+  });
+
+  it("rejects sentence-level flood for reusable knowledge units", () => {
+    const flood = {
+      candidates: Array.from({ length: 8 }, (_, i) => ({
+        candidateType: "fact",
+        factStatus: "fact",
+        title: `文${i + 1}`,
+        summary: `一文${i + 1}`,
+        normalizedStatement: `一文${i + 1}である。`,
+        domains: ["company_common"],
+        categories: [],
+        tags: [],
+        isCurrent: true,
+        confidence: 0.8,
+        sourceQuality: 0.9,
+        evidence: { sourceChunkId: "c1", excerpt: `一文${i + 1}` },
+      })),
+      skippedPrivate: false,
+    };
+    const scored = scoreExtractionEval({ caseId: "I", jsonText: JSON.stringify(flood) });
+    expect(scored.pass).toBe(false);
+    expect(scored.reason).toBe("too_many_candidates");
   });
 });
 

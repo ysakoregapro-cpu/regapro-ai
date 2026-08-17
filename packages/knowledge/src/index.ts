@@ -20,3 +20,7 @@ export * from "./extraction-provider.js";
 export * from "./conversation-filter.js";
 export * from "./source-retention.js";
 export * from "./extraction-eval.js";
+export * from "./personal-profile.js";
+export * from "./import-manifest.js";
+export * from "./import-plan.js";
+export * from "./import-records.js";

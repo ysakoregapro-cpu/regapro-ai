@@ -7,7 +7,7 @@ import {
 
 export const LLM_EXTRACTOR_TYPE = "llm";
 export const LLM_EXTRACTOR_VERSION = "llm-extractor-v1";
-export const LLM_PROMPT_VERSION = "kf-extract-v1";
+export const LLM_PROMPT_VERSION = "kf-extract-v2";
 export const HEURISTIC_EXTRACTOR_TYPE = "heuristic";
 export const HEURISTIC_EXTRACTOR_VERSION = "heuristic-v1";
 

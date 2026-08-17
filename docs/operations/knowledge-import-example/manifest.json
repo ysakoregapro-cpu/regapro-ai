@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "example-operating-principles",
+      "title": "RegaloProfessional AI Operating Principles",
+      "file": "operating-principles.md",
+      "importMode": "structured",
+      "domains": ["company_common"],
+      "clearanceLevel": 1,
+      "visibility": "organization",
+      "candidateType": "policy",
+      "factStatus": "fact",
+      "isCurrent": true,
+      "sourceDate": "2026-08-17",
+      "sourceQuality": 0.95,
+      "tags": ["operating-principles"],
+      "authoritativeSeed": true
+    },
+    {
+      "id": "example-recruitment-l1",
+      "title": "Recruitment operations are organization-visible",
+      "content": "有料職業紹介の通常業務 Knowledge は domain=recruitment でも clearance L1 で組織参照できる。",
+      "importMode": "structured",
+      "domains": ["recruitment"],
+      "clearanceLevel": "company",
+      "visibility": "organization",
+      "candidateType": "policy",
+      "factStatus": "fact",
+      "isCurrent": true,
+      "sourceQuality": 0.95,
+      "tags": ["example"],
+      "authoritativeSeed": true
+    }
+  ]
+}

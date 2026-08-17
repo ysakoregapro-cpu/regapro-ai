@@ -22,7 +22,7 @@ export type KnowledgeExtractionBudget = {
 };
 
 export const DEFAULT_KNOWLEDGE_INGESTION_BUDGET: KnowledgeIngestionBudget = {
-  maxCharsPerSourceChunk: 1800,
+  maxCharsPerSourceChunk: 4000,
   overlapChars: 160,
   minChars: 80,
   maxUnitsPerTick: 8,
@@ -35,7 +35,7 @@ export const DEFAULT_KNOWLEDGE_INGESTION_BUDGET: KnowledgeIngestionBudget = {
 export const DEFAULT_KNOWLEDGE_EXTRACTION_BUDGET: KnowledgeExtractionBudget = {
   maxCharsPerExtraction: 6_000,
   maxTokensPerRequest: 4_000,
-  maxCandidatesPerChunk: 8,
+  maxCandidatesPerChunk: 4,
   maxRetries: 2,
   maxReasoningEscalations: 2,
   timeoutMs: 25_000,
