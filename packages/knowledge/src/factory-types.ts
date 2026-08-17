@@ -10,6 +10,7 @@ export const KnowledgeOriginKind = z.enum([
   "transcript",
   "api",
   "manual",
+  "authoritative_seed",
 ]);
 export type KnowledgeOriginKind = z.infer<typeof KnowledgeOriginKind>;
 
@@ -61,6 +62,7 @@ export const KnowledgeJobStatus = z.enum([
   "completed",
   "failed",
   "cancelled",
+  "paused",
 ]);
 export type KnowledgeJobStatus = z.infer<typeof KnowledgeJobStatus>;
 
@@ -69,6 +71,8 @@ export const KnowledgeUnitStatus = z.enum([
   "processing",
   "completed",
   "failed",
+  "retryable",
+  "waiting_for_extractor",
 ]);
 export type KnowledgeUnitStatus = z.infer<typeof KnowledgeUnitStatus>;
 

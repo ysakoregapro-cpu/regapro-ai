@@ -20,6 +20,16 @@ export type ExtractedCandidateDraft = {
   confidence: number;
   sourceQuality: number;
   sourceChunkIndex: number | null;
+  isCurrent?: boolean;
+  validFrom?: string | null;
+  validUntil?: string | null;
+  observedAt?: string | null;
+  sourceDate?: string | null;
+  extractorType?: string;
+  extractorVersion?: string;
+  promptVersion?: string;
+  modelRole?: string | null;
+  modelId?: string | null;
 };
 
 export type KnowledgeExtractor = {
@@ -51,6 +61,9 @@ function inferType(text: string, originKind: KnowledgeOriginKind): KnowledgeCand
 function inferFactStatus(text: string): KnowledgeFactStatus {
   if (/却下|見送り|採用しない/.test(text)) return "rejected";
   if (/仮説|かもしれない/.test(text)) return "hypothesis";
+  if (/当時|以前は|過去は|昔は/.test(text) && /現在|今は|現時点/.test(text)) {
+    return "historical";
+  }
   if (SPECULATIVE_RE.test(text)) return "proposal";
   if (DECISION_RE.test(text)) return "decision";
   return "fact";
@@ -66,7 +79,7 @@ function titleFrom(text: string, fallback: string): string {
  * Conservative: speculative language stays proposal/hypothesis, never "current fact".
  */
 export class HeuristicKnowledgeExtractor implements KnowledgeExtractor {
-  readonly id = "heuristic";
+  readonly id = "heuristic-v1";
   readonly usesModel = false;
 
   async extract(input: {
@@ -101,6 +114,9 @@ export class HeuristicKnowledgeExtractor implements KnowledgeExtractor {
           confidence: 0.7,
           sourceQuality: 0.8,
           sourceChunkIndex: input.chunkIndex,
+          extractorType: "heuristic",
+          extractorVersion: "heuristic-v1",
+          promptVersion: "heuristic-v1",
         },
         {
           title: titleFrom(a, input.title),
@@ -117,6 +133,9 @@ export class HeuristicKnowledgeExtractor implements KnowledgeExtractor {
           confidence: 0.45,
           sourceQuality: 0.6,
           sourceChunkIndex: input.chunkIndex,
+          extractorType: "heuristic",
+          extractorVersion: "heuristic-v1",
+          promptVersion: "heuristic-v1",
         },
       ];
     }
@@ -135,8 +154,17 @@ export class HeuristicKnowledgeExtractor implements KnowledgeExtractor {
         domainKeys,
         tags: [],
         confidence: 0.5,
-        sourceQuality: input.originKind === "conversation" ? 0.35 : 0.55,
+        sourceQuality:
+          input.originKind === "authoritative_seed"
+            ? 0.95
+            : input.originKind === "conversation" || input.originKind === "transcript"
+              ? 0.35
+              : 0.55,
         sourceChunkIndex: input.chunkIndex,
+        isCurrent: inferFactStatus(text) !== "historical" && inferFactStatus(text) !== "rejected",
+        extractorType: "heuristic",
+        extractorVersion: "heuristic-v1",
+        promptVersion: "heuristic-v1",
       },
     ];
   }

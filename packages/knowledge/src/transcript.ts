@@ -16,7 +16,7 @@ export type TranscriptIngestPort = {
 };
 
 const PERSONAL_SKIP =
-  /健康|病歴|宗教|政治|忠誠|内部告発|プライベート|私生活|恋愛|愚痴/;
+  /健康|病歴|宗教|政治|忠誠|内部告発|プライベート|私生活|恋愛|愚痴|パスワード|認証情報|APIキー/;
 
 /**
  * Format-agnostic transcript port. Does not depend on a vendor export schema.

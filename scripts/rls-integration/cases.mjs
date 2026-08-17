@@ -663,6 +663,18 @@ async function runNoMembership(reporter, { none, ids, ctx }) {
       .eq("id", ids.fileDerived),
     ids.fileDerived,
   );
+  reporter.expectWriteDenied(
+    "no_membership DENIED knowledge_extraction_cache insert",
+    await none.client.from("knowledge_extraction_cache").insert({
+      org_id: ctx.org.id,
+      source_chunk_hash: "rls-none",
+      extractor_type: "llm",
+      extractor_version: "llm-extractor-v1",
+      model_id: "none",
+      prompt_version: "kf-extract-v1",
+      result: [],
+    }),
+  );
 
   // Login gate alignment: authenticated but no membership → treat as 403
   const { data: mem } = await none.client
@@ -888,6 +900,27 @@ async function runKnowledge(reporter, { sales, hr, exec, adminFix, ids }) {
     "knowledge factory: editor without review cannot insert review",
     reviewInsert,
   );
+
+  const cacheAsNoneShape = {
+    org_id: ids.orgId,
+    source_chunk_hash: "rls-hardening",
+    extractor_type: "llm",
+    extractor_version: "llm-extractor-v1",
+    model_id: "none",
+    prompt_version: "kf-extract-v1",
+    result: [],
+  };
+  const cacheInsert = await exec.client.from("knowledge_extraction_cache").insert(cacheAsNoneShape);
+  if (cacheInsert.error) {
+    reporter.fail("knowledge factory: writer can insert extraction cache", cacheInsert.error.message);
+  } else {
+    reporter.pass("knowledge factory: writer can insert extraction cache", "ok");
+    await adminFix.client
+      .from("knowledge_extraction_cache")
+      .delete()
+      .eq("source_chunk_hash", "rls-hardening")
+      .eq("org_id", ids.orgId);
+  }
 
   void adminFix;
 }

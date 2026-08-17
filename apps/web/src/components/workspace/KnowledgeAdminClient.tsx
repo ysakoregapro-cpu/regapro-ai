@@ -33,6 +33,7 @@ type InboxRow = {
   fact_status: string;
   review_status: string;
   conflict_kind: string;
+  conflict_reason: string | null;
   domain_keys: string[] | null;
   source_excerpt: string | null;
   source_quality: number | null;
@@ -42,6 +43,10 @@ type InboxRow = {
   supersedes_document_id: string | null;
   created_at: string;
   source_id: string | null;
+  extractor_type: string | null;
+  extractor_version: string | null;
+  extracted_at: string | null;
+  is_current: boolean | null;
 };
 
 type JobRow = {
@@ -52,8 +57,13 @@ type JobRow = {
   processed_units: number;
   failed_units: number;
   error_summary: string | null;
+  last_error_code: string | null;
   started_at: string | null;
   completed_at: string | null;
+  model_calls: number | null;
+  estimated_tokens: number | null;
+  estimated_cost_usd: number | null;
+  cancel_requested: boolean | null;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -96,6 +106,10 @@ export function KnowledgeAdminClient({
   const [url, setUrl] = useState("");
   const [domainKey, setDomainKey] = useState("company_common");
   const [sourceDate, setSourceDate] = useState("");
+  const [authoritativeSeed, setAuthoritativeSeed] = useState(false);
+  const [reviewQuery, setReviewQuery] = useState("");
+  const [reviewDomain, setReviewDomain] = useState("");
+  const [reviewCurrent, setReviewCurrent] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -114,9 +128,14 @@ export function KnowledgeAdminClient({
 
   const refreshInbox = useCallback(() => {
     startTransition(async () => {
-      const res = await fetch(
-        `/api/knowledge/factory?view=inbox&status=${encodeURIComponent(reviewFilter)}`,
-      );
+      const params = new URLSearchParams({
+        view: "inbox",
+        status: reviewFilter,
+      });
+      if (reviewQuery.trim()) params.set("q", reviewQuery.trim());
+      if (reviewDomain) params.set("domain", reviewDomain);
+      if (reviewCurrent) params.set("current", reviewCurrent);
+      const res = await fetch(`/api/knowledge/factory?${params.toString()}`);
       if (!res.ok) {
         setError("レビュー一覧を取得できませんでした");
         return;
@@ -125,7 +144,7 @@ export function KnowledgeAdminClient({
       setInbox(json.inbox ?? []);
       setSelected(new Set());
     });
-  }, [reviewFilter]);
+  }, [reviewFilter, reviewQuery, reviewDomain, reviewCurrent]);
 
   const refreshJobs = useCallback(() => {
     startTransition(async () => {
@@ -218,6 +237,17 @@ export function KnowledgeAdminClient({
         setNotice(`矛盾など ${json.skipped.length} 件は個別確認が必要です`);
       }
       refreshInbox();
+    });
+  }
+
+  function jobAction(jobId: string, action: "process" | "pause" | "resume" | "retry_failed" | "cancel") {
+    startTransition(async () => {
+      await fetch("/api/knowledge/factory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, jobId }),
+      });
+      refreshJobs();
     });
   }
 
@@ -374,13 +404,21 @@ export function KnowledgeAdminClient({
               onChange={(e) => setSourceDate(e.target.value)}
             />
           </label>
+          <label className="flex items-center gap-2 text-[13px] text-text">
+            <input
+              type="checkbox"
+              checked={authoritativeSeed}
+              onChange={(e) => setAuthoritativeSeed(e.target.checked)}
+            />
+            現在確定している会社情報（シード）。レビューは省略しません。
+          </label>
           <button
             type="button"
             className="rounded-md bg-accent px-4 py-2 text-[14px] text-white disabled:opacity-50"
             disabled={pending || !title.trim() || !body.trim()}
             onClick={() =>
               ingest({
-                originKind: "paste",
+                originKind: authoritativeSeed ? "authoritative_seed" : "paste",
                 title,
                 text: body,
                 domainKeys: [domainKey],
@@ -512,6 +550,27 @@ export function KnowledgeAdminClient({
               </button>
             ))}
           </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <input
+              className={fieldClass}
+              placeholder="タイトル検索"
+              value={reviewQuery}
+              onChange={(e) => setReviewQuery(e.target.value)}
+            />
+            <select className={fieldClass} value={reviewDomain} onChange={(e) => setReviewDomain(e.target.value)}>
+              <option value="">すべての領域</option>
+              {DOMAIN_OPTIONS.map((d) => (
+                <option key={d.key} value={d.key}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+            <select className={fieldClass} value={reviewCurrent} onChange={(e) => setReviewCurrent(e.target.value)}>
+              <option value="">現在 / 過去</option>
+              <option value="true">現在</option>
+              <option value="false">過去</option>
+            </select>
+          </div>
           {reviewFilter === "new" || reviewFilter === "possible_update" ? (
             <button
               type="button"
@@ -543,9 +602,15 @@ export function KnowledgeAdminClient({
                 <div className="min-w-0 flex-1 space-y-1">
                   <p className="truncate text-[14px] font-medium">{row.title}</p>
                   <p className="text-[12px] text-text-secondary">
-                    {row.candidate_type} · {row.fact_status} · {row.conflict_kind} ·{" "}
+                    {row.candidate_type} · {row.fact_status} · {row.conflict_kind}
+                    {row.conflict_reason ? `（${row.conflict_reason}）` : ""} ·{" "}
                     {(row.domain_keys ?? []).join(", ")}
                     {row.source_quality != null ? ` · 品質 ${row.source_quality}` : ""}
+                    {row.is_current === false ? " · 過去" : " · 現在"}
+                  </p>
+                  <p className="text-[12px] text-text-secondary">
+                    抽出 {row.extracted_at ? new Date(row.extracted_at).toLocaleString("ja-JP") : "—"}
+                    {row.extractor_version ? ` · ${row.extractor_version}` : ""}
                   </p>
                   {row.source_excerpt ? (
                     <p className="text-[12px] text-text-secondary">原文: {row.source_excerpt.slice(0, 240)}</p>
@@ -651,27 +716,54 @@ export function KnowledgeAdminClient({
                     {job.status}
                     {job.failed_units ? ` · 失敗 ${job.failed_units}` : ""}
                     {job.error_summary ? ` · ${job.error_summary}` : ""}
+                    {job.model_calls ? ` · 推定呼び出し ${job.model_calls}` : ""}
+                    {job.estimated_cost_usd
+                      ? ` · 推定コスト $${Number(job.estimated_cost_usd).toFixed(4)}`
+                      : ""}
                   </p>
                 </div>
-                {job.status === "processing" || job.status === "pending" ? (
-                  <button
-                    type="button"
-                    className="text-[13px] text-accent underline-offset-2 hover:underline"
-                    disabled={pending}
-                    onClick={() =>
-                      startTransition(async () => {
-                        await fetch("/api/knowledge/factory", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ action: "process", jobId: job.id }),
-                        });
-                        refreshJobs();
-                      })
-                    }
-                  >
-                    再開
-                  </button>
-                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  {job.status === "processing" || job.status === "pending" || job.status === "paused" ? (
+                    <button
+                      type="button"
+                      className="text-[13px] text-accent underline-offset-2 hover:underline"
+                      disabled={pending}
+                      onClick={() => jobAction(job.id, job.status === "paused" ? "resume" : "process")}
+                    >
+                      {job.status === "paused" ? "再開" : "続きを処理"}
+                    </button>
+                  ) : null}
+                  {job.status === "processing" || job.status === "pending" ? (
+                    <button
+                      type="button"
+                      className="text-[13px] text-text-secondary underline-offset-2 hover:underline"
+                      disabled={pending}
+                      onClick={() => jobAction(job.id, "pause")}
+                    >
+                      一時停止
+                    </button>
+                  ) : null}
+                  {job.status === "failed" || (job.failed_units ?? 0) > 0 ? (
+                    <button
+                      type="button"
+                      className="text-[13px] text-accent underline-offset-2 hover:underline"
+                      disabled={pending}
+                      onClick={() => jobAction(job.id, "retry_failed")}
+                    >
+                      失敗を再試行
+                    </button>
+                  ) : null}
+                  {job.status === "pending" || job.status === "processing" || job.status === "paused" ? (
+                    <button
+                      type="button"
+                      className="text-[13px] text-text-secondary underline-offset-2 hover:underline"
+                      disabled={pending}
+                      onClick={() => jobAction(job.id, "cancel")}
+                    >
+                      未処理を取消
+                    </button>
+                  ) : null}
+                </div>
               </ListRow>
             ))
           )}

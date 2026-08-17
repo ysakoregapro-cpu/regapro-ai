@@ -7,6 +7,7 @@ export type StorageBucket =
   | "chat-attachments"
   | "artifacts"
   | "knowledge-files"
+  | "knowledge-sources"
   | "research-snapshots";
 
 export function buildOrgThreadFilePath(input: {

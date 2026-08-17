@@ -3,6 +3,8 @@ import { inflateRawSync } from "node:zlib";
 export type SourceTextResult = {
   text: string | null;
   limitation: string | null;
+  requiresOcr?: boolean;
+  sheets?: Array<{ name: string; rowCount: number }>;
 };
 
 function decodeUtf8(bytes: Uint8Array): string {
@@ -51,23 +53,37 @@ function extractDocx(bytes: Uint8Array): string {
   return xmlTexts(xml, "w:t").join("").replace(/\s+/g, " ").trim();
 }
 
-function extractXlsx(bytes: Uint8Array): string {
+function extractXlsx(bytes: Uint8Array): { text: string; sheets: Array<{ name: string; rowCount: number }> } {
   const files = unzip(bytes);
   const shared = decodeUtf8(files.get("xl/sharedStrings.xml") ?? new Uint8Array());
   const strings = xmlTexts(shared, "t");
-  const sheet = decodeUtf8(files.get("xl/worksheets/sheet1.xml") ?? new Uint8Array());
-  const rows = [...sheet.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)].map((r) => {
-    const cells = [...(r[1] ?? "").matchAll(/<c[^>]*>([\s\S]*?)<\/c>/g)];
-    return cells
-      .map((c) => {
-        const v = /<v>([^<]*)<\/v>/.exec(c[1] ?? "")?.[1];
-        const t = /t="s"/.test(c[0] ?? "");
-        if (t && v != null) return strings[Number(v)] ?? "";
-        return v ?? "";
-      })
-      .join("\t");
+  const workbook = decodeUtf8(files.get("xl/workbook.xml") ?? new Uint8Array());
+  const sheetNames = [...workbook.matchAll(/<sheet[^>]*name="([^"]+)"/g)].map((m) => m[1] ?? "sheet");
+  const sheets: Array<{ name: string; rowCount: number }> = [];
+  const blocks: string[] = [];
+  const sheetFiles = [...files.keys()].filter((k) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(k));
+  sheetFiles.sort();
+  sheetFiles.forEach((path, idx) => {
+    const name = sheetNames[idx] ?? `sheet${idx + 1}`;
+    const sheet = decodeUtf8(files.get(path) ?? new Uint8Array());
+    const rows = [...sheet.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)].map((r, rowIdx) => {
+      const cells = [...(r[1] ?? "").matchAll(/<c[^>]*>([\s\S]*?)<\/c>/g)];
+      const values = cells
+        .map((c) => {
+          const v = /<v>([^<]*)<\/v>/.exec(c[1] ?? "")?.[1];
+          const t = /t="s"/.test(c[0] ?? "");
+          if (t && v != null) return strings[Number(v)] ?? "";
+          return v ?? "";
+        })
+        .join("\t");
+      if (!values.trim()) return "";
+      return `[sheet:${name} row:${rowIdx + 1}] ${values}`;
+    });
+    const kept = rows.filter(Boolean);
+    sheets.push({ name, rowCount: kept.length });
+    if (kept.length) blocks.push(kept.join("\n"));
   });
-  return rows.filter(Boolean).join("\n");
+  return { text: blocks.join("\n").trim(), sheets };
 }
 
 function extractPdf(bytes: Uint8Array): string {
@@ -102,7 +118,16 @@ export function extractSourceText(input: {
       name.endsWith(".md") ||
       name.endsWith(".csv")
     ) {
-      return { text: decodeUtf8(input.bytes), limitation: null };
+      const decoded = decodeUtf8(input.bytes);
+      if (name.endsWith(".csv") || mime.includes("csv")) {
+        const withRows = decoded
+          .split(/\r?\n/)
+          .map((line, i) => (line.trim() ? `[row:${i + 1}] ${line}` : ""))
+          .filter(Boolean)
+          .join("\n");
+        return { text: withRows || decoded, limitation: null };
+      }
+      return { text: decoded, limitation: null };
     }
     if (
       mime.includes("wordprocessingml") ||
@@ -114,16 +139,16 @@ export function extractSourceText(input: {
         : { text: null, limitation: "docx_empty" };
     }
     if (mime.includes("spreadsheetml") || name.endsWith(".xlsx")) {
-      const text = extractXlsx(input.bytes);
-      return text
-        ? { text, limitation: null }
-        : { text: null, limitation: "xlsx_empty" };
+      const extracted = extractXlsx(input.bytes);
+      return extracted.text
+        ? { text: extracted.text, limitation: null, sheets: extracted.sheets }
+        : { text: null, limitation: "xlsx_empty", sheets: extracted.sheets };
     }
     if (mime === "application/pdf" || name.endsWith(".pdf")) {
       const text = extractPdf(input.bytes);
       return text
         ? { text, limitation: null }
-        : { text: null, limitation: "pdf_no_extractable_text" };
+        : { text: null, limitation: "requires_ocr", requiresOcr: true };
     }
     return { text: null, limitation: "unsupported_type" };
   } catch {

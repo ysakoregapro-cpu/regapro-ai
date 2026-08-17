@@ -36,6 +36,8 @@ export function filterOutboundLlmPayload(input: {
   access: AccessContext;
   userText: string;
   context: AIContext;
+  task?: "answer" | "knowledge_extraction";
+  systemOverride?: string;
 }): OutboundLlmPayload {
   const ceiling = input.context.ceiling;
   const elevated =
@@ -58,25 +60,37 @@ export function filterOutboundLlmPayload(input: {
     ].join("\n");
   };
 
-  const system = [
-    "あなたは RegaloProfessional の業務アシスタントです。",
-    "会社固有の事実は「社内出典」に書かれた内容だけを使ってください。無い事実は一般知識で補完しないでください。",
-    "社内出典が0件なら、社内の現状は「確認できる情報がない」と明記してください。",
-    "外部出典がある場合は、社内が0件でも外部に基づいて公開情報を整理してください。社内事実と混同しないでください。",
-    "「出典：internal」のような固定ラベルを本文に書かないでください。根拠は渡された出典のタイトルやURLで示してください。",
-    "検索した・調べたと主張せず、渡された出典だけを使ってください。",
-    elevated
-      ? "この依頼は社内の取り扱い区分が高いため、推測で機密を補完してはいけません。"
-      : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const system = input.systemOverride
+    ? [
+        input.systemOverride,
+        elevated
+          ? "この依頼は社内の取り扱い区分が高いため、推測で機密を補完してはいけません。"
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : [
+        "あなたは RegaloProfessional の業務アシスタントです。",
+        "会社固有の事実は「社内出典」に書かれた内容だけを使ってください。無い事実は一般知識で補完しないでください。",
+        "社内出典が0件なら、社内の現状は「確認できる情報がない」と明記してください。",
+        "外部出典がある場合は、社内が0件でも外部に基づいて公開情報を整理してください。社内事実と混同しないでください。",
+        "「出典：internal」のような固定ラベルを本文に書かないでください。根拠は渡された出典のタイトルやURLで示してください。",
+        "検索した・調べたと主張せず、渡された出典だけを使ってください。",
+        elevated
+          ? "この依頼は社内の取り扱い区分が高いため、推測で機密を補完してはいけません。"
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
 
-  const user = [
-    `依頼:\n${redact(input.userText)}`,
-    formatBlock("社内出典", internal),
-    formatBlock("外部出典", web),
-  ].join("\n\n");
+  const user =
+    input.task === "knowledge_extraction"
+      ? [`抽出依頼:\n${redact(input.userText)}`, formatBlock("社内出典", internal)].join("\n\n")
+      : [
+          `依頼:\n${redact(input.userText)}`,
+          formatBlock("社内出典", internal),
+          formatBlock("外部出典", web),
+        ].join("\n\n");
 
   return {
     system,

@@ -23,7 +23,7 @@ export type ConversationCapturePlan = {
 };
 
 const PERSONAL_BLOCK_RE =
-  /健康|病歴|宗教|政治|忠誠|内部告発|プライベート|私生活|恋愛|家族の病気/;
+  /健康|病歴|宗教|政治|忠誠|内部告発|プライベート|私生活|恋愛|家族の病気|パスワード|認証情報/;
 
 /**
  * Conversational capture stays a candidate. Private/personal material is not promoted.

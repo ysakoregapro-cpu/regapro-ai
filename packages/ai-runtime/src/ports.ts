@@ -76,6 +76,9 @@ export type ModelGenerateInput = {
   intent: IntentDecision;
   hints?: WorkflowAnswerHints;
   role?: import("./types.js").ModelRole | null;
+  /** Knowledge Factory structured extraction. Does not change answer routing. */
+  task?: "answer" | "knowledge_extraction";
+  systemOverride?: string;
 };
 
 export type ModelGenerateOutput = {

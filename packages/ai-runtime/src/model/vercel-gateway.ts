@@ -134,6 +134,8 @@ export class VercelGatewayModelProvider implements ModelProvider {
       access: input.access,
       userText: input.userText,
       context: input.context,
+      task: input.task,
+      systemOverride: input.systemOverride,
     });
     const role: ModelRole = input.role ?? "main";
     const modelId = this.registry.roleModel(role);

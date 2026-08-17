@@ -37,8 +37,13 @@ function loadEnvFile(filePath) {
 loadEnvFile(resolve(root, "apps/web/.env.local"));
 loadEnvFile(resolve(root, ".env.local"));
 
-if (process.env.REGAPRO_KNOWLEDGE_FACTORY_SMOKE !== "1") {
-  console.log("smoke:knowledge-factory skipped (set REGAPRO_KNOWLEDGE_FACTORY_SMOKE=1)");
+if (
+  process.env.REGAPRO_KNOWLEDGE_FACTORY_SMOKE !== "1" &&
+  process.env.REGAPRO_KNOWLEDGE_HARDENING_SMOKE !== "1"
+) {
+  console.log(
+    "smoke:knowledge-factory skipped (set REGAPRO_KNOWLEDGE_FACTORY_SMOKE=1 or REGAPRO_KNOWLEDGE_HARDENING_SMOKE=1)",
+  );
   process.exit(0);
 }
 
@@ -184,6 +189,9 @@ try {
       status: "approved",
       domain_keys: ["sales"],
       summary: cand.summary,
+      extractor_type: "heuristic",
+      extractor_version: "heuristic-v1",
+      prompt_version: "heuristic-v1",
       extracted_at: new Date().toISOString(),
     })
     .select("id")

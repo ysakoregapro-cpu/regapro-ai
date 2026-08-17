@@ -12,14 +12,20 @@ import {
 } from "@regapro/knowledge";
 import {
   batchReviewCandidates,
+  cancelIngestionJob,
   createKnowledgeSourceAndJob,
-  extractSourceText,
   factoryCounts,
+  ingestFileSource,
   ingestUrlSource,
   listIngestionJobs,
   listReviewInbox,
+  pauseIngestionJob,
+  previewSourceDelete,
+  processIngestionJob,
   processIngestionJobUntilIdle,
+  resumeIngestionJob,
   retryDocumentEmbedding,
+  retryFailedIngestionChunks,
   reviewCandidate,
 } from "@/lib/application/knowledge-factory-service";
 
@@ -43,6 +49,11 @@ const IngestSchema = z.object({
 
 const ProcessSchema = z.object({
   action: z.literal("process"),
+  jobId: z.string().uuid(),
+});
+
+const JobControlSchema = z.object({
+  action: z.enum(["pause", "resume", "retry_failed", "cancel"]),
   jobId: z.string().uuid(),
 });
 
@@ -105,13 +116,22 @@ export async function GET(req: Request) {
       jobs: await listIngestionJobs(client, session.access.organizationId),
     });
   }
-  const inbox = await listReviewInbox(
-    client,
-    session.access.organizationId,
-    status && KnowledgeReviewStatus.safeParse(status).success
-      ? (status as z.infer<typeof KnowledgeReviewStatus>)
-      : undefined,
-  );
+  const inbox = await listReviewInbox(client, session.access.organizationId, {
+    status:
+      status && KnowledgeReviewStatus.safeParse(status).success
+        ? (status as z.infer<typeof KnowledgeReviewStatus>)
+        : undefined,
+    domain: url.searchParams.get("domain") ?? undefined,
+    sourceId: url.searchParams.get("sourceId") ?? undefined,
+    conflict: url.searchParams.get("conflict") ?? undefined,
+    q: url.searchParams.get("q") ?? undefined,
+    current:
+      url.searchParams.get("current") === "true"
+        ? true
+        : url.searchParams.get("current") === "false"
+          ? false
+          : undefined,
+  });
   return NextResponse.json({ inbox });
 }
 
@@ -135,52 +155,14 @@ export async function POST(req: Request) {
       error?: string;
     }> = [];
     for (const file of files) {
-      try {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const extracted = extractSourceText({
-          mimeType: file.type || "application/octet-stream",
-          filename: file.name,
-          bytes,
-        });
-        if (!extracted.text) {
-          results.push({
-            name: file.name,
-            ok: false,
-            error: extracted.limitation ?? "extract_failed",
-          });
-          continue;
-        }
-        const created = await createKnowledgeSourceAndJob(client, {
-          orgId: session.access.organizationId,
-          userId: session.access.userId,
-          access: session.access,
-          originKind: "file",
-          title: file.name.slice(0, 200),
-          text: extracted.text,
-          confidentialityLevel: "company",
-          visibility: "organization",
-          domainKeys: ["company_common"],
-        });
-        if (!created.duplicate) {
-          await processIngestionJobUntilIdle(client, {
-            jobId: created.jobId,
-            access: session.access,
-            maxTicks: 8,
-          });
-        }
-        results.push({
-          name: file.name,
-          ok: true,
-          sourceId: created.sourceId,
-          jobId: created.jobId,
-        });
-      } catch (err) {
-        results.push({
-          name: file.name,
-          ok: false,
-          error: err instanceof Error ? err.message : "failed",
-        });
-      }
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const result = await ingestFileSource(client, {
+        access: session.access,
+        filename: file.name,
+        mimeType: file.type || "application/octet-stream",
+        bytes,
+      });
+      results.push(result);
     }
     return NextResponse.json({ ok: true, results });
   }
@@ -197,8 +179,45 @@ export async function POST(req: Request) {
       const progress = await processIngestionJobUntilIdle(client, {
         jobId: parsed.data.jobId,
         access: session.access,
+        maxTicks: 4,
       });
       return NextResponse.json({ ok: true, progress });
+    }
+
+    if (action === "pause" || action === "resume" || action === "retry_failed" || action === "cancel") {
+      const parsed = JobControlSchema.safeParse({ ...json, action });
+      if (!parsed.success) {
+        return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+      }
+      if (parsed.data.action === "pause") {
+        await pauseIngestionJob(client, parsed.data.jobId);
+        return NextResponse.json({ ok: true });
+      }
+      if (parsed.data.action === "resume") {
+        const progress = await resumeIngestionJob(client, {
+          jobId: parsed.data.jobId,
+          access: session.access,
+        });
+        return NextResponse.json({ ok: true, progress });
+      }
+      if (parsed.data.action === "retry_failed") {
+        const progress = await retryFailedIngestionChunks(client, {
+          jobId: parsed.data.jobId,
+          access: session.access,
+        });
+        return NextResponse.json({ ok: true, progress });
+      }
+      await cancelIngestionJob(client, parsed.data.jobId);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (action === "preview_source_delete") {
+      const sourceId = z.string().uuid().safeParse(json.sourceId);
+      if (!sourceId.success) {
+        return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+      }
+      const plan = await previewSourceDelete(client, sourceId.data);
+      return NextResponse.json({ ok: true, plan });
     }
 
     if (action === "review") {
@@ -280,7 +299,7 @@ export async function POST(req: Request) {
         sourceDate: data.sourceDate ?? null,
       });
       if (!created.duplicate && !created.limitation) {
-        await processIngestionJobUntilIdle(client, {
+        await processIngestionJob(client, {
           jobId: created.jobId,
           access: session.access,
         });
@@ -304,7 +323,7 @@ export async function POST(req: Request) {
       sourceDate: data.sourceDate ?? null,
     });
     if (!created.duplicate) {
-      await processIngestionJobUntilIdle(client, {
+      await processIngestionJob(client, {
         jobId: created.jobId,
         access: session.access,
       });

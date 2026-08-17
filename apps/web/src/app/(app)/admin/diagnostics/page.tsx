@@ -99,7 +99,7 @@ export default async function DiagnosticsPage() {
           reason={
             sample
               ? "確認用・再起動で失われる場合あり"
-              : "chat-attachments bucket + file_objects（認証済み JWT / RLS）"
+              : "chat-attachments / knowledge-sources + file_objects（認証済み JWT / RLS）"
           }
         />
       </section>
