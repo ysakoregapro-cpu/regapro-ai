@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./approval-messages": {
+      "types": "./dist/approval-messages.d.ts",
+      "import": "./dist/approval-messages.js"
     }
   },
   "scripts": {

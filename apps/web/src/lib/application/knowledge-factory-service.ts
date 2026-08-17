@@ -7,10 +7,14 @@ import {
   LlmKnowledgeExtractionProvider,
   assertNoSecurityPromotion,
   buildStructuredImportRecords,
-  canBatchApprove,
   classifyKnowledgeConflict,
+  decideKnowledgeReview,
   extractSourceText,
+  hasKnowledgeReviewPermission,
   isKnowledgeCaptureUtterance,
+  knowledgeReviewErrorMessage,
+  planBatchKnowledgeReview,
+  resolveEmbeddingPublishStatus,
   planConversationCapture,
   planKnowledgeSourceDelete,
   sha256Hex,
@@ -106,11 +110,28 @@ function requireWrite(access: AccessContext): void {
 }
 
 function requireReview(access: AccessContext): void {
-  if (
-    !access.permissionKeys.includes("knowledge:review") &&
-    !access.permissionKeys.includes("knowledge:approve")
-  ) {
+  if (!hasKnowledgeReviewPermission(access.permissionKeys)) {
     throw new Error("UNAUTHORIZED_REVIEW");
+  }
+}
+
+function throwIfError(error: { message: string } | null | undefined, fallback: string): void {
+  if (error) throw new Error(error.message || fallback);
+}
+
+const reviewInFlight = new Set<string>();
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, code: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(code)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -1263,14 +1284,58 @@ export async function reviewCandidate(
     visibility?: Visibility;
     comment?: string;
   },
-): Promise<{ documentId?: string }> {
+): Promise<{ documentId?: string; alreadyPublished?: boolean; published?: boolean }> {
   requireReview(input.access);
+  if (reviewInFlight.has(input.candidateId)) {
+    throw new Error("ALREADY_IN_FLIGHT");
+  }
+  reviewInFlight.add(input.candidateId);
+  try {
+    return await reviewCandidateUnlocked(client, input);
+  } finally {
+    reviewInFlight.delete(input.candidateId);
+  }
+}
+
+async function reviewCandidateUnlocked(
+  client: Client,
+  input: {
+    access: AccessContext;
+    candidateId: string;
+    action: "approve" | "edit_approve" | "reject" | "merge" | "mark_duplicate" | "supersede";
+    title?: string;
+    content?: string;
+    visibility?: Visibility;
+    comment?: string;
+  },
+): Promise<{ documentId?: string; alreadyPublished?: boolean; published?: boolean }> {
   const { data: cand, error } = await client
     .from("knowledge_candidates")
     .select("*")
     .eq("id", input.candidateId)
     .single();
-  if (error || !cand) throw new Error("candidate not found");
+  if (error || !cand) throw new Error("CANDIDATE_NOT_FOUND");
+
+  const decision = decideKnowledgeReview({
+    permissionKeys: input.access.permissionKeys,
+    action: input.action,
+    candidate: {
+      reviewStatus: cand.review_status,
+      conflictKind: cand.conflict_kind,
+      publishedDocumentId: cand.published_document_id,
+      suggestedVisibility: cand.suggested_visibility,
+      confidence: cand.confidence,
+      sourceQuality: cand.source_quality,
+    },
+  });
+  if (decision.kind === "forbidden") throw new Error(decision.code);
+  if (decision.kind === "not_found") throw new Error(decision.code);
+  if (decision.kind === "idempotent") {
+    return { documentId: decision.documentId, alreadyPublished: true, published: true };
+  }
+  if (decision.kind === "conflict_supersede_required") {
+    throw new Error(decision.code);
+  }
 
   const sourceVis = cand.suggested_visibility ?? "organization";
   const targetVis = input.visibility ?? cand.confirmed_visibility ?? sourceVis;
@@ -1284,28 +1349,27 @@ export async function reviewCandidate(
       sourceLevel,
       targetLevel: sourceLevel,
     });
-    if (cand.conflict_kind === "conflict" && input.action === "approve") {
-      throw new Error("CONFLICT_REQUIRES_EXPLICIT_SUPERSEDE");
-    }
   }
 
-  await client.from("knowledge_candidate_reviews").insert({
+  const { error: reviewErr } = await client.from("knowledge_candidate_reviews").insert({
     org_id: cand.org_id,
     candidate_id: cand.id,
     reviewer_id: input.access.userId,
     action: input.action,
     comment: input.comment ?? null,
   });
+  throwIfError(reviewErr, "review insert failed");
 
   if (input.action === "reject" || input.action === "mark_duplicate") {
-    await client
+    const { error: rejErr } = await client
       .from("knowledge_candidates")
       .update({
         review_status: input.action === "reject" ? "rejected" : "duplicate",
         status: "rejected",
       })
       .eq("id", cand.id);
-    return {};
+    throwIfError(rejErr, "candidate reject failed");
+    return { published: false };
   }
 
   const title = (input.title ?? cand.title).slice(0, 200);
@@ -1327,51 +1391,87 @@ export async function reviewCandidate(
       })
       .select("id")
       .single();
+    throwIfError(created.error, "source required");
     sourceId = created.data?.id;
   }
   if (!sourceId) throw new Error("source required");
 
-  const { data: doc, error: dErr } = await client
+  const { data: existingDoc } = await client
     .from("knowledge_documents")
-    .insert({
-      org_id: cand.org_id,
-      source_id: sourceId,
-      title,
-      status: "approved",
-      content_hash: sha256Hex(body),
-      confidentiality_level: cand.suggested_confidentiality_level,
-      visibility: targetVis,
-      owner_user_id: input.access.userId,
-      source_type: "manual",
-      candidate_id: cand.id,
-      domain_keys: cand.domain_keys ?? ["company_common"],
-      fact_status: cand.fact_status,
-      is_current: cand.fact_status !== "historical",
-      source_quality: cand.source_quality,
-      supersedes_id: input.action === "supersede" ? cand.supersedes_document_id : null,
-      embedding_status: "pending",
-    })
-    .select("id")
-    .single();
+    .select("id, status")
+    .eq("candidate_id", cand.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (existingDoc?.id && existingDoc.status === "published") {
+    const { error: linkErr } = await client
+      .from("knowledge_candidates")
+      .update({
+        review_status: "approved",
+        status: "approved",
+        published_document_id: existingDoc.id,
+        confirmed_visibility: targetVis,
+      })
+      .eq("id", cand.id);
+    throwIfError(linkErr, "candidate link failed");
+    return { documentId: existingDoc.id, alreadyPublished: true, published: true };
+  }
+
+  const { data: doc, error: dErr } = existingDoc?.id
+    ? { data: { id: existingDoc.id }, error: null }
+    : await client
+        .from("knowledge_documents")
+        .insert({
+          org_id: cand.org_id,
+          source_id: sourceId,
+          title,
+          status: "approved",
+          content_hash: sha256Hex(body),
+          confidentiality_level: cand.suggested_confidentiality_level,
+          visibility: targetVis,
+          owner_user_id: input.access.userId,
+          source_type: "manual",
+          candidate_id: cand.id,
+          domain_keys: cand.domain_keys ?? ["company_common"],
+          fact_status: cand.fact_status,
+          is_current: cand.fact_status !== "historical",
+          source_quality: cand.source_quality,
+          supersedes_id: input.action === "supersede" ? cand.supersedes_document_id : null,
+          embedding_status: "pending",
+        })
+        .select("id")
+        .single();
   if (dErr || !doc) throw new Error(dErr?.message ?? "document insert failed");
 
-  await client.from("knowledge_document_versions").insert({
-    document_id: doc.id,
-    version_number: 1,
-    body,
-    created_by: input.access.userId,
-  });
+  const { data: existingVersion } = await client
+    .from("knowledge_document_versions")
+    .select("id")
+    .eq("document_id", doc.id)
+    .is("deleted_at", null)
+    .limit(1)
+    .maybeSingle();
+  if (!existingVersion?.id) {
+    const { error: vErr } = await client.from("knowledge_document_versions").insert({
+      document_id: doc.id,
+      version_number: 1,
+      body,
+      created_by: input.access.userId,
+    });
+    throwIfError(vErr, "version insert failed");
+  }
 
   for (const key of cand.domain_keys ?? ["company_common"]) {
-    await client.from("knowledge_document_domains").insert({
+    const { error: domErr } = await client.from("knowledge_document_domains").insert({
       document_id: doc.id,
       domain_key: key,
       org_id: cand.org_id,
     });
+    if (domErr && !/duplicate|unique/i.test(domErr.message)) {
+      throw new Error(domErr.message);
+    }
   }
 
   if (input.action === "supersede" && cand.supersedes_document_id) {
-    await client
+    const { error: supErr } = await client
       .from("knowledge_documents")
       .update({
         status: "superseded",
@@ -1380,35 +1480,52 @@ export async function reviewCandidate(
         superseded_by_id: doc.id,
       })
       .eq("id", cand.supersedes_document_id);
+    throwIfError(supErr, "supersede update failed");
   }
 
-  await client
+  const { error: pubErr } = await client
     .from("knowledge_documents")
     .update({ status: "published", published_at: new Date().toISOString() })
     .eq("id", doc.id);
+  throwIfError(pubErr, "publish update failed");
 
-  const ingest = await ingestPublishedDocumentChunks(client, {
-    documentId: doc.id,
-    embedding: createEmbeddingProvider(),
-  });
-  const embedding = createEmbeddingProvider();
-  let embeddingStatus: "ready" | "failed" | "skipped" = "skipped";
-  if (embedding.available) {
-    embeddingStatus = ingest.embedded ? "ready" : "failed";
-  }
-  if (embeddingStatus === "failed") {
+  try {
+    const ingest = await withTimeout(
+      ingestPublishedDocumentChunks(client, {
+        documentId: doc.id,
+        embedding: createEmbeddingProvider(),
+      }),
+      90_000,
+      "EMBEDDING_TIMEOUT",
+    );
+    const embedding = createEmbeddingProvider();
+    const embeddingStatus = resolveEmbeddingPublishStatus({
+      available: embedding.available,
+      embedded: ingest.embedded,
+    });
+    if (embeddingStatus === "failed") {
+      throw new Error("EMBEDDING_FAILED");
+    }
+    const { error: embErr } = await client
+      .from("knowledge_documents")
+      .update({ embedding_status: embeddingStatus })
+      .eq("id", doc.id);
+    throwIfError(embErr, "embedding status update failed");
+  } catch (err) {
+    const code =
+      err instanceof Error && /EMBEDDING_/.test(err.message)
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : "EMBEDDING_FAILED";
     await client
       .from("knowledge_documents")
       .update({ status: "approved", published_at: null, embedding_status: "failed" })
       .eq("id", doc.id);
-    throw new Error("EMBEDDING_FAILED");
+    throw new Error(code);
   }
-  await client
-    .from("knowledge_documents")
-    .update({ embedding_status: embeddingStatus })
-    .eq("id", doc.id);
 
-  await client
+  const { error: candErr } = await client
     .from("knowledge_candidates")
     .update({
       review_status: "approved",
@@ -1417,8 +1534,9 @@ export async function reviewCandidate(
       confirmed_visibility: targetVis,
     })
     .eq("id", cand.id);
+  throwIfError(candErr, "candidate approve failed");
 
-  return { documentId: doc.id };
+  return { documentId: doc.id, published: true };
 }
 
 export async function batchReviewCandidates(
@@ -1428,34 +1546,46 @@ export async function batchReviewCandidates(
     candidateIds: string[];
     action: "approve" | "reject";
   },
-): Promise<{ ok: string[]; skipped: string[] }> {
+): Promise<{ ok: string[]; skipped: string[]; failed: Array<{ id: string; error: string }> }> {
   requireReview(input.access);
+  const { data: rows, error: listErr } = await client
+    .from("knowledge_candidates")
+    .select(
+      "id, review_status, conflict_kind, suggested_visibility, confidence, source_quality, published_document_id",
+    )
+    .in("id", input.candidateIds);
+  throwIfError(listErr, "candidate list failed");
+  const candidatesById: Record<
+    string,
+    {
+      reviewStatus: string;
+      conflictKind: string;
+      publishedDocumentId?: string | null;
+      suggestedVisibility?: string | null;
+      confidence?: number | null;
+      sourceQuality?: number | null;
+    }
+  > = {};
+  for (const row of rows ?? []) {
+    candidatesById[row.id] = {
+      reviewStatus: row.review_status,
+      conflictKind: row.conflict_kind,
+      publishedDocumentId: row.published_document_id,
+      suggestedVisibility: row.suggested_visibility,
+      confidence: row.confidence,
+      sourceQuality: row.source_quality,
+    };
+  }
+  const plan = planBatchKnowledgeReview({
+    permissionKeys: input.access.permissionKeys,
+    action: input.action,
+    selectedIds: input.candidateIds,
+    candidatesById,
+  });
   const ok: string[] = [];
-  const skipped: string[] = [];
-  for (const id of input.candidateIds) {
-    const { data: cand } = await client
-      .from("knowledge_candidates")
-      .select("id, review_status, conflict_kind, conflict_reason, suggested_visibility, confidence, source_quality, source_id")
-      .eq("id", id)
-      .maybeSingle();
-    if (!cand) {
-      skipped.push(id);
-      continue;
-    }
-    if (
-      input.action === "approve" &&
-      !canBatchApprove({
-        reviewStatus: cand.review_status,
-        conflictKind: cand.conflict_kind,
-        conflictReason: cand.conflict_reason,
-        suggestedVisibility: cand.suggested_visibility,
-        confidence: cand.confidence,
-        sourceQuality: cand.source_quality,
-      })
-    ) {
-      skipped.push(id);
-      continue;
-    }
+  const skipped = plan.skipped.map((s) => s.id);
+  const failed: Array<{ id: string; error: string }> = [];
+  for (const id of plan.toRun) {
     try {
       await reviewCandidate(client, {
         access: input.access,
@@ -1463,11 +1593,14 @@ export async function batchReviewCandidates(
         action: input.action === "approve" ? "approve" : "reject",
       });
       ok.push(id);
-    } catch {
-      skipped.push(id);
+    } catch (err) {
+      failed.push({
+        id,
+        error: knowledgeReviewErrorMessage(err instanceof Error ? err.message : "failed"),
+      });
     }
   }
-  return { ok, skipped };
+  return { ok, skipped, failed };
 }
 
 export async function retryDocumentEmbedding(

@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { EmptyState, ListRow, PageHeader } from "@/components/ui/primitives";
+import { knowledgeReviewErrorMessage } from "@regapro/knowledge/approval-messages";
+import {
+  reviewFeedbackFromResponse,
+  type FactoryReviewResponse,
+} from "@/lib/application/knowledge-review-response";
 
 const DOMAIN_OPTIONS = [
   { key: "company_common", label: "全社共通" },
@@ -133,6 +138,8 @@ export function KnowledgeAdminClient({
   const [editTitle, setEditTitle] = useState("");
   const [editBody, setEditBody] = useState("");
   const [pending, startTransition] = useTransition();
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   const refreshDocs = useCallback(() => {
     startTransition(async () => {
@@ -208,11 +215,19 @@ export function KnowledgeAdminClient({
     });
   }
 
-  function review(id: string, reviewAction: string, extra?: Record<string, unknown>) {
-    startTransition(async () => {
-      setError(null);
+  async function review(id: string, reviewAction: string, extra?: Record<string, unknown>) {
+    if (reviewBusy) {
+      setError(knowledgeReviewErrorMessage("ALREADY_IN_FLIGHT"));
+      return;
+    }
+    setReviewBusy(true);
+    setReviewingId(id);
+    setError(null);
+    setNotice(null);
+    try {
       const res = await fetch("/api/knowledge/factory", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "review",
@@ -221,23 +236,51 @@ export function KnowledgeAdminClient({
           ...extra,
         }),
       });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        setError(json.error ?? "レビュー操作に失敗しました");
-        return;
+      let json: FactoryReviewResponse = {};
+      try {
+        json = (await res.json()) as FactoryReviewResponse;
+      } catch {
+        json = {};
       }
+      const feedback = reviewFeedbackFromResponse({
+        httpOk: res.ok,
+        body: json,
+        kind: "individual",
+        action: reviewAction,
+      });
+      setError(feedback.error);
+      setNotice(feedback.notice);
+      if (!res.ok) return;
       refreshInbox();
       refreshDocs();
-    });
+    } catch (err) {
+      setError(
+        knowledgeReviewErrorMessage(err instanceof Error ? err.message : "failed"),
+      );
+    } finally {
+      setReviewBusy(false);
+      setReviewingId(null);
+    }
   }
 
-  function batch(reviewAction: "approve" | "reject") {
+  async function batch(reviewAction: "approve" | "reject") {
     const ids = [...selected];
-    if (ids.length === 0) return;
-    startTransition(async () => {
-      setError(null);
+    if (ids.length === 0) {
+      setError(knowledgeReviewErrorMessage("NO_SELECTION"));
+      setNotice(null);
+      return;
+    }
+    if (reviewBusy) {
+      setError(knowledgeReviewErrorMessage("ALREADY_IN_FLIGHT"));
+      return;
+    }
+    setReviewBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
       const res = await fetch("/api/knowledge/factory", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "batch_review",
@@ -245,16 +288,30 @@ export function KnowledgeAdminClient({
           reviewAction,
         }),
       });
-      const json = (await res.json()) as { error?: string; skipped?: string[] };
-      if (!res.ok) {
-        setError(json.error ?? "一括操作に失敗しました");
-        return;
+      let json: FactoryReviewResponse = {};
+      try {
+        json = (await res.json()) as FactoryReviewResponse;
+      } catch {
+        json = {};
       }
-      if (json.skipped?.length) {
-        setNotice(`矛盾など ${json.skipped.length} 件は個別確認が必要です`);
-      }
+      const feedback = reviewFeedbackFromResponse({
+        httpOk: res.ok,
+        body: json,
+        kind: "batch",
+        action: reviewAction,
+      });
+      setError(feedback.error);
+      setNotice(feedback.notice);
+      if (!res.ok) return;
       refreshInbox();
-    });
+      refreshDocs();
+    } catch (err) {
+      setError(
+        knowledgeReviewErrorMessage(err instanceof Error ? err.message : "failed"),
+      );
+    } finally {
+      setReviewBusy(false);
+    }
   }
 
   function jobAction(jobId: string, action: "process" | "pause" | "resume" | "retry_failed" | "cancel") {
@@ -402,7 +459,11 @@ export function KnowledgeAdminClient({
           {error}
         </p>
       ) : null}
-      {notice ? <p className="text-[12px] text-text-secondary">{notice}</p> : null}
+      {notice ? (
+        <p className="text-[12px] text-text-secondary" aria-live="polite">
+          {notice}
+        </p>
+      ) : null}
 
       {tab === "ingest" ? (
         <section className="space-y-3">
@@ -629,6 +690,9 @@ export function KnowledgeAdminClient({
       {tab === "review" ? (
         <section className="space-y-3">
           <h2 className="text-[14px] font-medium text-text">レビュー</h2>
+          <p className="text-[12px] text-text-secondary" aria-live="polite">
+            {reviewBusy ? "公開しています…" : null}
+          </p>
           <div className="flex flex-wrap gap-2 text-[12px]">
             {REVIEW_TABS.map((t) => (
               <button
@@ -670,10 +734,14 @@ export function KnowledgeAdminClient({
             <button
               type="button"
               className="text-[13px] text-accent underline-offset-2 hover:underline disabled:opacity-50"
-              disabled={pending || selected.size === 0}
-              onClick={() => batch("approve")}
+              disabled={reviewBusy || selected.size === 0}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void batch("approve");
+              }}
             >
-              選択を一括承認（矛盾は対象外）
+              {reviewBusy ? "公開しています…" : "選択を一括承認（矛盾は対象外）"}
             </button>
           ) : null}
           {inbox.length === 0 ? (
@@ -726,48 +794,66 @@ export function KnowledgeAdminClient({
                       {row.conflict_kind === "conflict" ? (
                         <button
                           type="button"
-                          className="text-accent underline-offset-2 hover:underline"
-                          disabled={pending}
-                          onClick={() => review(row.id, "supersede")}
+                          className="text-accent underline-offset-2 hover:underline disabled:opacity-50"
+                          disabled={reviewBusy}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void review(row.id, "supersede");
+                          }}
                         >
-                          置き換えて承認
+                          {reviewBusy && reviewingId === row.id ? "公開しています…" : "置き換えて承認"}
                         </button>
                       ) : (
                         <button
                           type="button"
-                          className="text-accent underline-offset-2 hover:underline"
-                          disabled={pending}
-                          onClick={() => review(row.id, "approve")}
+                          className="text-accent underline-offset-2 hover:underline disabled:opacity-50"
+                          disabled={reviewBusy}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void review(row.id, "approve");
+                          }}
                         >
-                          承認して公開
+                          {reviewBusy && reviewingId === row.id ? "公開しています…" : "承認して公開"}
                         </button>
                       )}
                       <button
                         type="button"
-                        className="text-accent underline-offset-2 hover:underline"
-                        disabled={pending || !editTitle.trim()}
-                        onClick={() =>
-                          review(row.id, "edit_approve", {
+                        className="text-accent underline-offset-2 hover:underline disabled:opacity-50"
+                        disabled={reviewBusy || !editTitle.trim()}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void review(row.id, "edit_approve", {
                             title: editTitle || row.title,
                             content: editBody || row.summary,
-                          })
-                        }
+                          });
+                        }}
                       >
                         編集して承認
                       </button>
                       <button
                         type="button"
-                        className="text-text-secondary underline-offset-2 hover:underline"
-                        disabled={pending}
-                        onClick={() => review(row.id, "mark_duplicate")}
+                        className="text-text-secondary underline-offset-2 hover:underline disabled:opacity-50"
+                        disabled={reviewBusy}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void review(row.id, "mark_duplicate");
+                        }}
                       >
                         重複
                       </button>
                       <button
                         type="button"
-                        className="text-text-secondary underline-offset-2 hover:underline"
-                        disabled={pending}
-                        onClick={() => review(row.id, "reject")}
+                        className="text-text-secondary underline-offset-2 hover:underline disabled:opacity-50"
+                        disabled={reviewBusy}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void review(row.id, "reject");
+                        }}
                       >
                         却下
                       </button>

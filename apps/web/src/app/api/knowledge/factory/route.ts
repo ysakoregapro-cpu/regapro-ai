@@ -9,6 +9,7 @@ import {
   KnowledgeDomainKeySchema,
   KnowledgeOriginKind,
   KnowledgeReviewStatus,
+  knowledgeReviewErrorMessage,
   transcriptToReusableText,
 } from "@regapro/knowledge";
 import {
@@ -33,6 +34,7 @@ import {
 } from "@/lib/application/knowledge-factory-service";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
 
 const IngestSchema = z.object({
   action: z.literal("ingest").optional(),
@@ -291,7 +293,11 @@ export async function POST(req: Request) {
         visibility: parsed.data.visibility,
         comment: parsed.data.comment,
       });
-      return NextResponse.json({ ok: true, ...result });
+      return NextResponse.json({
+        ok: true,
+        publishedCount: result.published || result.alreadyPublished ? 1 : 0,
+        ...result,
+      });
     }
 
     if (action === "batch_review") {
@@ -308,6 +314,8 @@ export async function POST(req: Request) {
         ok: true,
         approvedIds: result.ok,
         skipped: result.skipped,
+        failed: result.failed,
+        publishedCount: parsed.data.reviewAction === "approve" ? result.ok.length : 0,
       });
     }
 
@@ -406,11 +414,15 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ ok: true, ...created });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "failed";
+    const raw = err instanceof Error ? err.message : "failed";
+    const isReview = action === "review" || action === "batch_review";
+    const message = isReview ? knowledgeReviewErrorMessage(raw) : raw;
     const status =
-      message.startsWith("UNAUTHORIZED") || message.includes("PRIVATE_SOURCE")
+      raw.startsWith("UNAUTHORIZED") || raw.includes("PRIVATE_SOURCE") || raw === "UNAUTHORIZED_REVIEW"
         ? 403
-        : 400;
-    return NextResponse.json({ error: message }, { status });
+        : raw === "CANDIDATE_NOT_FOUND"
+          ? 404
+          : 400;
+    return NextResponse.json({ error: message, code: raw }, { status });
   }
 }

@@ -32,7 +32,7 @@ export function classifyThrown(err: unknown): AppErrorCode {
     return "UNAUTHENTICATED";
   }
   if (
-    /row-level security|permission denied|42501|FORBIDDEN|NO_ORGANIZATION/i.test(
+    /row-level security|permission denied|42501|FORBIDDEN|NO_ORGANIZATION|UNAUTHORIZED_REVIEW|UNAUTHORIZED_KNOWLEDGE/i.test(
       msg,
     )
   ) {
