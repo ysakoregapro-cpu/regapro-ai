@@ -257,6 +257,7 @@ export async function setupFixtures({ url, anon, secret, runId }) {
 
   // ---- Seed labeled threads / derived rows (service_role) ----
   const ids = {};
+  ids.orgId = ctx.org.id;
   const sales = users.sales_company;
   const hr = users.hr_people;
   const exec = users.executive;
@@ -660,6 +661,45 @@ export async function setupFixtures({ url, anon, secret, runId }) {
     ownerUserId: sales.userId,
   });
 
+  const { data: factorySource, error: fsErr } = await admin
+    .from("knowledge_sources")
+    .insert({
+      org_id: ctx.org.id,
+      name: tagTitle(runId, "factory private source"),
+      source_type: "paste",
+      origin_kind: "paste",
+      raw_text: "private source body must not leak",
+      content_hash: `hash-private-${runId}`,
+      confidentiality_level: 1,
+      visibility: "private",
+      owner_user_id: exec.userId,
+    })
+    .select("id")
+    .single();
+  if (fsErr) throw new Error(`factory private source: ${fsErr.message}`);
+  ids.knowledgePrivateSourceId = factorySource.id;
+
+  const { data: factoryCand, error: fcErr } = await admin
+    .from("knowledge_candidates")
+    .insert({
+      org_id: ctx.org.id,
+      title: tagTitle(runId, "factory candidate not retrievable"),
+      content: "候補本文は通常検索に出してはいけないユニーク句 factory-candidate-not-in-rpc",
+      suggested_confidentiality_level: 1,
+      suggested_visibility: "organization",
+      source_user_id: exec.userId,
+      source_id: factorySource.id,
+      source_excerpt: "候補本文は通常検索に出してはいけない",
+      candidate_type: "knowhow",
+      fact_status: "proposal",
+      review_status: "new",
+      status: "draft",
+    })
+    .select("id")
+    .single();
+  if (fcErr) throw new Error(`factory candidate: ${fcErr.message}`);
+  ids.knowledgeFactoryCandidateId = factoryCand.id;
+
   return {
     admin,
     ctx,
@@ -737,10 +777,36 @@ export async function cleanupFixtures({ admin, ctx, users, ids, runId }) {
     await admin.from("knowledge_document_versions").delete().in("document_id", kid);
     await admin.from("knowledge_approvals").delete().in("document_id", kid);
     await admin.from("knowledge_revisions").delete().in("document_id", kid);
+    await admin.from("knowledge_document_domains").delete().in("document_id", kid);
     await admin.from("knowledge_documents").delete().in("id", kid);
   }
-  if (ksrc.length) {
-    await admin.from("knowledge_sources").delete().in("id", ksrc);
+
+  const { data: ksrcRows } = await admin
+    .from("knowledge_sources")
+    .select("id")
+    .eq("org_id", orgId)
+    .like("name", `${prefix}%`);
+  const allSrc = [
+    ...new Set([
+      ...ksrc,
+      ...(ksrcRows ?? []).map((s) => s.id),
+    ]),
+  ];
+  const { data: kcands } = await admin
+    .from("knowledge_candidates")
+    .select("id")
+    .eq("org_id", orgId)
+    .like("title", `${prefix}%`);
+  const candIds = (kcands ?? []).map((c) => c.id);
+  if (candIds.length) {
+    await admin.from("knowledge_candidate_reviews").delete().in("candidate_id", candIds);
+    await admin.from("knowledge_candidates").delete().in("id", candIds);
+  }
+  if (allSrc.length) {
+    await admin.from("knowledge_source_chunks").delete().in("source_id", allSrc);
+    await admin.from("knowledge_ingestion_jobs").delete().in("source_id", allSrc);
+    await admin.from("knowledge_facts").delete().in("source_id", allSrc);
+    await admin.from("knowledge_sources").delete().in("id", allSrc);
   }
 
   await admin

@@ -59,6 +59,10 @@ export type RetrievalPlan = {
   includePrivateConversations: false;
   /** conversation:audit must never mix into normal answers. */
   includeAuditCases: false;
+  /** When false, current published facts are preferred over historical. */
+  includeHistoricalKnowledge?: boolean;
+  /** Optional domain keys the planner prefers (data-driven catalog). */
+  preferredDomainKeys?: string[];
 };
 
 export type RetrievedItem = {

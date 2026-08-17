@@ -3,6 +3,17 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { EmptyState, ListRow, PageHeader } from "@/components/ui/primitives";
 
+const DOMAIN_OPTIONS = [
+  { key: "company_common", label: "全社共通" },
+  { key: "sales", label: "営業" },
+  { key: "telecom", label: "通信" },
+  { key: "recruitment", label: "有料職業紹介" },
+  { key: "real_estate", label: "不動産" },
+  { key: "staffing", label: "人材" },
+  { key: "engineering", label: "エンジニアリング" },
+  { key: "management", label: "経営" },
+] as const;
+
 type DocRow = {
   id: string;
   title: string;
@@ -14,37 +25,227 @@ type DocRow = {
   published_at: string | null;
 };
 
+type InboxRow = {
+  id: string;
+  title: string;
+  summary: string | null;
+  candidate_type: string;
+  fact_status: string;
+  review_status: string;
+  conflict_kind: string;
+  domain_keys: string[] | null;
+  source_excerpt: string | null;
+  source_quality: number | null;
+  confidence: number | null;
+  suggested_visibility: string | null;
+  suggested_confidentiality_level: number;
+  supersedes_document_id: string | null;
+  created_at: string;
+  source_id: string | null;
+};
+
+type JobRow = {
+  id: string;
+  source_id: string;
+  status: string;
+  total_units: number;
+  processed_units: number;
+  failed_units: number;
+  error_summary: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+};
+
 const STATUS_LABEL: Record<string, string> = {
   draft: "下書き",
   review: "レビュー中",
   approved: "承認済み",
   published: "公開",
   archived: "アーカイブ",
+  superseded: "更新済み",
 };
 
-export function KnowledgeAdminClient({ mode }: { mode: "dev-sample" | "supabase" }) {
+const REVIEW_TABS = [
+  { id: "new", label: "新規" },
+  { id: "duplicate", label: "重複" },
+  { id: "conflict", label: "矛盾" },
+  { id: "possible_update", label: "更新候補" },
+  { id: "approved", label: "承認済み" },
+  { id: "rejected", label: "却下" },
+] as const;
+
+type FactoryTab = "ingest" | "qa" | "review" | "jobs" | "published";
+
+export function KnowledgeAdminClient({
+  mode,
+  initialTab = "ingest",
+}: {
+  mode: "dev-sample" | "supabase";
+  initialTab?: FactoryTab;
+}) {
+  const [tab, setTab] = useState<FactoryTab>(initialTab);
   const [docs, setDocs] = useState<DocRow[]>([]);
+  const [inbox, setInbox] = useState<InboxRow[]>([]);
+  const [jobs, setJobs] = useState<JobRow[]>([]);
+  const [reviewFilter, setReviewFilter] = useState<string>("new");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [expert, setExpert] = useState("");
+  const [url, setUrl] = useState("");
+  const [domainKey, setDomainKey] = useState("company_common");
+  const [sourceDate, setSourceDate] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [editTitle, setEditTitle] = useState("");
+  const [editBody, setEditBody] = useState("");
   const [pending, startTransition] = useTransition();
 
-  const refresh = useCallback(() => {
+  const refreshDocs = useCallback(() => {
     startTransition(async () => {
-      setError(null);
       const res = await fetch("/api/knowledge");
-      if (!res.ok) {
-        setError("一覧を取得できませんでした");
-        return;
-      }
+      if (!res.ok) return;
       const json = (await res.json()) as { documents?: DocRow[] };
       setDocs(json.documents ?? []);
     });
   }, []);
 
+  const refreshInbox = useCallback(() => {
+    startTransition(async () => {
+      const res = await fetch(
+        `/api/knowledge/factory?view=inbox&status=${encodeURIComponent(reviewFilter)}`,
+      );
+      if (!res.ok) {
+        setError("レビュー一覧を取得できませんでした");
+        return;
+      }
+      const json = (await res.json()) as { inbox?: InboxRow[] };
+      setInbox(json.inbox ?? []);
+      setSelected(new Set());
+    });
+  }, [reviewFilter]);
+
+  const refreshJobs = useCallback(() => {
+    startTransition(async () => {
+      const res = await fetch("/api/knowledge/factory?view=jobs");
+      if (!res.ok) return;
+      const json = (await res.json()) as { jobs?: JobRow[] };
+      setJobs(json.jobs ?? []);
+    });
+  }, []);
+
   useEffect(() => {
-    if (mode === "supabase") refresh();
-  }, [mode, refresh]);
+    if (mode !== "supabase") return;
+    refreshDocs();
+  }, [mode, refreshDocs]);
+
+  useEffect(() => {
+    if (mode !== "supabase") return;
+    if (tab === "review") refreshInbox();
+    if (tab === "jobs") refreshJobs();
+  }, [mode, tab, refreshInbox, refreshJobs]);
+
+  function ingest(payload: Record<string, unknown>) {
+    startTransition(async () => {
+      setError(null);
+      setNotice(null);
+      const res = await fetch("/api/knowledge/factory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = (await res.json()) as { error?: string; duplicate?: boolean };
+      if (!res.ok) {
+        setError(json.error ?? "取り込みに失敗しました");
+        return;
+      }
+      setNotice(json.duplicate ? "同一内容は既に取り込まれています" : "候補を作成しました。レビューから確認してください。");
+      setTitle("");
+      setBody("");
+      setQuestion("");
+      setAnswer("");
+      setExpert("");
+      setUrl("");
+      refreshJobs();
+    });
+  }
+
+  function review(id: string, reviewAction: string, extra?: Record<string, unknown>) {
+    startTransition(async () => {
+      setError(null);
+      const res = await fetch("/api/knowledge/factory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "review",
+          candidateId: id,
+          reviewAction,
+          ...extra,
+        }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setError(json.error ?? "レビュー操作に失敗しました");
+        return;
+      }
+      refreshInbox();
+      refreshDocs();
+    });
+  }
+
+  function batch(reviewAction: "approve" | "reject") {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    startTransition(async () => {
+      setError(null);
+      const res = await fetch("/api/knowledge/factory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "batch_review",
+          candidateIds: ids,
+          reviewAction,
+        }),
+      });
+      const json = (await res.json()) as { error?: string; skipped?: string[] };
+      if (!res.ok) {
+        setError(json.error ?? "一括操作に失敗しました");
+        return;
+      }
+      if (json.skipped?.length) {
+        setNotice(`矛盾など ${json.skipped.length} 件は個別確認が必要です`);
+      }
+      refreshInbox();
+    });
+  }
+
+  function uploadFiles(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    startTransition(async () => {
+      setError(null);
+      setNotice(null);
+      const form = new FormData();
+      for (const file of Array.from(list)) form.append("files", file);
+      const res = await fetch("/api/knowledge/factory", {
+        method: "POST",
+        body: form,
+      });
+      const json = (await res.json()) as {
+        error?: string;
+        results?: Array<{ name: string; ok: boolean }>;
+      };
+      if (!res.ok) {
+        setError(json.error ?? "ファイル取り込みに失敗しました");
+        return;
+      }
+      const ok = (json.results ?? []).filter((r) => r.ok).length;
+      const ng = (json.results ?? []).length - ok;
+      setNotice(`${ok} 件を投入しました${ng ? `（${ng} 件は個別に失敗）` : ""}`);
+      refreshJobs();
+    });
+  }
 
   function createDraft() {
     startTransition(async () => {
@@ -60,7 +261,7 @@ export function KnowledgeAdminClient({ mode }: { mode: "dev-sample" | "supabase"
       }
       setTitle("");
       setBody("");
-      refresh();
+      refreshDocs();
     });
   }
 
@@ -90,7 +291,7 @@ export function KnowledgeAdminClient({ mode }: { mode: "dev-sample" | "supabase"
         setError("状態変更に失敗しました");
         return;
       }
-      refresh();
+      refreshDocs();
     });
   }
 
@@ -98,82 +299,452 @@ export function KnowledgeAdminClient({ mode }: { mode: "dev-sample" | "supabase"
     return null;
   }
 
+  const fieldClass =
+    "mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 text-[14px] text-text";
+  const labelClass = "block text-[12px] text-text-secondary";
+
   return (
     <div className="space-y-6">
-      <section className="space-y-3 border-t border-border pt-6">
-        <h2 className="text-[14px] font-medium text-text">手動でナレッジを追加</h2>
-        <p className="text-[12px] text-text-secondary">
-          下書き → レビュー → 承認 → 公開の順。公開時に検索用チャンクを生成します。
-        </p>
-        <label className="block text-[12px] text-text-secondary">
-          タイトル
-          <input
-            className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 text-[14px] text-text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            maxLength={200}
-          />
-        </label>
-        <label className="block text-[12px] text-text-secondary">
-          本文
-          <textarea
-            className="mt-1 min-h-[120px] w-full rounded-md border border-border bg-surface px-3 py-2 text-[14px] text-text"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-          />
-        </label>
-        <button
-          type="button"
-          className="rounded-md bg-accent px-4 py-2 text-[14px] text-white disabled:opacity-50"
-          disabled={pending || !title.trim() || !body.trim()}
-          onClick={createDraft}
-        >
-          下書きを作成
-        </button>
-        {error ? (
-          <p className="text-[12px] text-red-700" role="alert">
-            {error}
-          </p>
-        ) : null}
-      </section>
+      <nav className="flex flex-wrap gap-3 border-b border-border pb-2 text-[13px]">
+        {(
+          [
+            ["ingest", "取り込む"],
+            ["qa", "Q&Aを追加"],
+            ["review", "レビュー"],
+            ["jobs", "処理状況"],
+            ["published", "公開ナレッジ"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={
+              tab === id
+                ? "font-medium text-accent"
+                : "text-text-secondary hover:text-text"
+            }
+            onClick={() => setTab(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
 
-      <section className="space-y-2">
-        <h2 className="text-[14px] font-medium text-text">管理中のナレッジ</h2>
-        {docs.length === 0 ? (
-          <EmptyState
-            title="まだナレッジがありません"
-            description="上のフォームから下書きを作成してください。"
-          />
-        ) : (
-          docs.map((d) => (
-            <ListRow key={d.id}>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[14px] font-medium">{d.title}</p>
-                <p className="text-[12px] text-text-secondary">
-                  {STATUS_LABEL[d.status] ?? d.status} · {d.visibility} · L
-                  {d.confidentiality_level}
-                </p>
-              </div>
-              {d.status === "draft" ||
-              d.status === "review" ||
-              d.status === "approved" ? (
-                <button
-                  type="button"
-                  className="shrink-0 text-[13px] text-accent underline-offset-2 hover:underline disabled:opacity-50"
-                  disabled={pending}
-                  onClick={() => advance(d)}
-                >
-                  {d.status === "draft"
-                    ? "レビューへ"
-                    : d.status === "review"
-                      ? "承認する"
-                      : "公開する"}
-                </button>
-              ) : null}
-            </ListRow>
-          ))
-        )}
-      </section>
+      {error ? (
+        <p className="text-[12px] text-red-700" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {notice ? <p className="text-[12px] text-text-secondary">{notice}</p> : null}
+
+      {tab === "ingest" ? (
+        <section className="space-y-3">
+          <h2 className="text-[14px] font-medium text-text">テキスト・URL・ファイル</h2>
+          <p className="text-[12px] text-text-secondary">
+            原文を保持したまま候補を作ります。公開はレビュー後です。巨大な資料は分割して処理します。
+          </p>
+          <label className={labelClass}>
+            タイトル
+            <input className={fieldClass} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
+          </label>
+          <label className={labelClass}>
+            本文（貼り付け）
+            <textarea
+              className={`${fieldClass} min-h-[120px]`}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+            />
+          </label>
+          <label className={labelClass}>
+            領域
+            <select className={fieldClass} value={domainKey} onChange={(e) => setDomainKey(e.target.value)}>
+              {DOMAIN_OPTIONS.map((d) => (
+                <option key={d.key} value={d.key}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={labelClass}>
+            情報の日付（任意）
+            <input
+              type="date"
+              className={fieldClass}
+              value={sourceDate}
+              onChange={(e) => setSourceDate(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="rounded-md bg-accent px-4 py-2 text-[14px] text-white disabled:opacity-50"
+            disabled={pending || !title.trim() || !body.trim()}
+            onClick={() =>
+              ingest({
+                originKind: "paste",
+                title,
+                text: body,
+                domainKeys: [domainKey],
+                sourceDate: sourceDate || undefined,
+              })
+            }
+          >
+            候補として取り込む
+          </button>
+          <label className={labelClass}>
+            URL
+            <input
+              className={fieldClass}
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://"
+            />
+          </label>
+          <button
+            type="button"
+            className="text-[13px] text-accent underline-offset-2 hover:underline disabled:opacity-50"
+            disabled={pending || !url.trim()}
+            onClick={() =>
+              ingest({
+                originKind: "url",
+                title: title || url,
+                url,
+                domainKeys: [domainKey],
+              })
+            }
+          >
+            URLから取り込む
+          </button>
+          <label className={labelClass}>
+            ファイル（txt / md / PDF / DOCX / XLSX / CSV、複数可）
+            <input
+              className="mt-1 block text-[13px]"
+              type="file"
+              multiple
+              accept=".txt,.md,.csv,.pdf,.docx,.xlsx,text/plain,text/markdown,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={(e) => uploadFiles(e.target.files)}
+            />
+          </label>
+        </section>
+      ) : null}
+
+      {tab === "qa" ? (
+        <section className="space-y-3">
+          <h2 className="text-[14px] font-medium text-text">Q&Aを追加</h2>
+          <p className="text-[12px] text-text-secondary">
+            原文の質問と回答は残します。一般化した原則は別候補としてレビューできます。
+          </p>
+          <label className={labelClass}>
+            質問
+            <textarea
+              className={`${fieldClass} min-h-[72px]`}
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+            />
+          </label>
+          <label className={labelClass}>
+            回答
+            <textarea
+              className={`${fieldClass} min-h-[120px]`}
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+            />
+          </label>
+          <label className={labelClass}>
+            専門家 / 情報源（任意）
+            <input className={fieldClass} value={expert} onChange={(e) => setExpert(e.target.value)} />
+          </label>
+          <label className={labelClass}>
+            領域
+            <select className={fieldClass} value={domainKey} onChange={(e) => setDomainKey(e.target.value)}>
+              {DOMAIN_OPTIONS.map((d) => (
+                <option key={d.key} value={d.key}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={labelClass}>
+            情報の日付（任意）
+            <input
+              type="date"
+              className={fieldClass}
+              value={sourceDate}
+              onChange={(e) => setSourceDate(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="rounded-md bg-accent px-4 py-2 text-[14px] text-white disabled:opacity-50"
+            disabled={pending || !question.trim() || !answer.trim()}
+            onClick={() =>
+              ingest({
+                originKind: "qa",
+                title: question.slice(0, 120),
+                question,
+                answer,
+                expertName: expert || undefined,
+                domainKeys: [domainKey],
+                sourceDate: sourceDate || undefined,
+              })
+            }
+          >
+            Q&Aを候補にする
+          </button>
+        </section>
+      ) : null}
+
+      {tab === "review" ? (
+        <section className="space-y-3">
+          <h2 className="text-[14px] font-medium text-text">レビュー</h2>
+          <div className="flex flex-wrap gap-2 text-[12px]">
+            {REVIEW_TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={
+                  reviewFilter === t.id
+                    ? "rounded-md bg-accent px-2 py-1 text-white"
+                    : "rounded-md border border-border px-2 py-1"
+                }
+                onClick={() => setReviewFilter(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {reviewFilter === "new" || reviewFilter === "possible_update" ? (
+            <button
+              type="button"
+              className="text-[13px] text-accent underline-offset-2 hover:underline disabled:opacity-50"
+              disabled={pending || selected.size === 0}
+              onClick={() => batch("approve")}
+            >
+              選択を一括承認（矛盾は対象外）
+            </button>
+          ) : null}
+          {inbox.length === 0 ? (
+            <EmptyState title="該当する候補はありません" description="" />
+          ) : (
+            inbox.map((row) => (
+              <ListRow key={row.id}>
+                <label className="mt-1 shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(row.id)}
+                    onChange={(e) => {
+                      const next = new Set(selected);
+                      if (e.target.checked) next.add(row.id);
+                      else next.delete(row.id);
+                      setSelected(next);
+                    }}
+                    aria-label="選択"
+                  />
+                </label>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="truncate text-[14px] font-medium">{row.title}</p>
+                  <p className="text-[12px] text-text-secondary">
+                    {row.candidate_type} · {row.fact_status} · {row.conflict_kind} ·{" "}
+                    {(row.domain_keys ?? []).join(", ")}
+                    {row.source_quality != null ? ` · 品質 ${row.source_quality}` : ""}
+                  </p>
+                  {row.source_excerpt ? (
+                    <p className="text-[12px] text-text-secondary">原文: {row.source_excerpt.slice(0, 240)}</p>
+                  ) : null}
+                  {row.summary ? (
+                    <p className="text-[12px]">{row.summary.slice(0, 280)}</p>
+                  ) : null}
+                  {row.supersedes_document_id ? (
+                    <p className="text-[12px] text-text-secondary">
+                      既存ナレッジの更新候補です。古い事実は残し、必要なら置き換えを指定してください。
+                    </p>
+                  ) : null}
+                  {row.review_status === "new" ||
+                  row.review_status === "possible_update" ||
+                  row.review_status === "conflict" ||
+                  row.review_status === "duplicate" ? (
+                    <div className="flex flex-wrap gap-3 pt-1 text-[13px]">
+                      {row.conflict_kind === "conflict" ? (
+                        <button
+                          type="button"
+                          className="text-accent underline-offset-2 hover:underline"
+                          disabled={pending}
+                          onClick={() => review(row.id, "supersede")}
+                        >
+                          置き換えて承認
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-accent underline-offset-2 hover:underline"
+                          disabled={pending}
+                          onClick={() => review(row.id, "approve")}
+                        >
+                          承認して公開
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="text-accent underline-offset-2 hover:underline"
+                        disabled={pending || !editTitle.trim()}
+                        onClick={() =>
+                          review(row.id, "edit_approve", {
+                            title: editTitle || row.title,
+                            content: editBody || row.summary,
+                          })
+                        }
+                      >
+                        編集して承認
+                      </button>
+                      <button
+                        type="button"
+                        className="text-text-secondary underline-offset-2 hover:underline"
+                        disabled={pending}
+                        onClick={() => review(row.id, "mark_duplicate")}
+                      >
+                        重複
+                      </button>
+                      <button
+                        type="button"
+                        className="text-text-secondary underline-offset-2 hover:underline"
+                        disabled={pending}
+                        onClick={() => review(row.id, "reject")}
+                      >
+                        却下
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </ListRow>
+            ))
+          )}
+          <div className="space-y-2 border-t border-border pt-3">
+            <p className="text-[12px] text-text-secondary">編集して承認する場合の上書き（任意）</p>
+            <input
+              className={fieldClass}
+              placeholder="タイトル"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+            />
+            <textarea
+              className={`${fieldClass} min-h-[72px]`}
+              placeholder="本文"
+              value={editBody}
+              onChange={(e) => setEditBody(e.target.value)}
+            />
+          </div>
+        </section>
+      ) : null}
+
+      {tab === "jobs" ? (
+        <section className="space-y-2">
+          <h2 className="text-[14px] font-medium text-text">処理状況</h2>
+          {jobs.length === 0 ? (
+            <EmptyState title="処理中の取り込みはありません" description="" />
+          ) : (
+            jobs.map((job) => (
+              <ListRow key={job.id}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[14px]">
+                    {job.processed_units} / {job.total_units} 分割
+                  </p>
+                  <p className="text-[12px] text-text-secondary">
+                    {job.status}
+                    {job.failed_units ? ` · 失敗 ${job.failed_units}` : ""}
+                    {job.error_summary ? ` · ${job.error_summary}` : ""}
+                  </p>
+                </div>
+                {job.status === "processing" || job.status === "pending" ? (
+                  <button
+                    type="button"
+                    className="text-[13px] text-accent underline-offset-2 hover:underline"
+                    disabled={pending}
+                    onClick={() =>
+                      startTransition(async () => {
+                        await fetch("/api/knowledge/factory", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ action: "process", jobId: job.id }),
+                        });
+                        refreshJobs();
+                      })
+                    }
+                  >
+                    再開
+                  </button>
+                ) : null}
+              </ListRow>
+            ))
+          )}
+        </section>
+      ) : null}
+
+      {tab === "published" ? (
+        <>
+          <section className="space-y-3">
+            <h2 className="text-[14px] font-medium text-text">手動で下書きを追加</h2>
+            <p className="text-[12px] text-text-secondary">
+              下書き → レビュー → 承認 → 公開の順。公開時に検索用チャンクを生成します。
+            </p>
+            <label className={labelClass}>
+              タイトル
+              <input
+                className={fieldClass}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                maxLength={200}
+              />
+            </label>
+            <label className={labelClass}>
+              本文
+              <textarea
+                className={`${fieldClass} min-h-[120px]`}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="rounded-md bg-accent px-4 py-2 text-[14px] text-white disabled:opacity-50"
+              disabled={pending || !title.trim() || !body.trim()}
+              onClick={createDraft}
+            >
+              下書きを作成
+            </button>
+          </section>
+          <section className="space-y-2">
+            <h2 className="text-[14px] font-medium text-text">管理中のナレッジ</h2>
+            {docs.length === 0 ? (
+              <EmptyState title="まだナレッジがありません" description="取り込みまたは下書きから追加してください。" />
+            ) : (
+              docs.map((d) => (
+                <ListRow key={d.id}>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[14px] font-medium">{d.title}</p>
+                    <p className="text-[12px] text-text-secondary">
+                      {STATUS_LABEL[d.status] ?? d.status} · {d.visibility} · L
+                      {d.confidentiality_level}
+                    </p>
+                  </div>
+                  {d.status === "draft" || d.status === "review" || d.status === "approved" ? (
+                    <button
+                      type="button"
+                      className="shrink-0 text-[13px] text-accent underline-offset-2 hover:underline disabled:opacity-50"
+                      disabled={pending}
+                      onClick={() => advance(d)}
+                    >
+                      {d.status === "draft"
+                        ? "レビューへ"
+                        : d.status === "review"
+                          ? "承認する"
+                          : "公開する"}
+                    </button>
+                  ) : null}
+                </ListRow>
+              ))
+            )}
+          </section>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -197,15 +768,12 @@ export function KnowledgePageHeader({
         description={
           mode === "dev-sample"
             ? "承認済みナレッジの一覧です"
-            : "公開ナレッジの管理と検索投入。AI回答は公開済み・権限内のみ参照します。"
+            : "資料・Q&A・会話から候補を作り、レビュー後に検索へ公開します。"
         }
       />
       {mode === "dev-sample" ? (
         sampleRows.length === 0 ? (
-          <EmptyState
-            title="表示できるナレッジはありません"
-            description=""
-          />
+          <EmptyState title="表示できるナレッジはありません" description="" />
         ) : (
           sampleRows.map((k) => (
             <ListRow key={k.id}>

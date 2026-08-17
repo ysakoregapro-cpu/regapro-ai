@@ -43,6 +43,15 @@ const RULES: RouteRule[] = [
     route: { role: "reasoning", skipLlm: false, secondaryRole: "main" },
   },
   {
+    id: "skip-llm-zero-internal",
+    when: (s) =>
+      s.intent === "internal_knowledge" &&
+      !s.hasInternalEvidence &&
+      !s.hasWebEvidence &&
+      !s.complexSynthesis,
+    route: { role: null, skipLlm: true, secondaryRole: "fast" },
+  },
+  {
     id: "skip-llm-lookup",
     when: (s) =>
       s.simpleLookup &&

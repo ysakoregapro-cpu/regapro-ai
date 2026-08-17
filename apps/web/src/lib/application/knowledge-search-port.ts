@@ -23,6 +23,9 @@ type RpcLexicalRow = {
   updated_at: string | null;
   lexical_rank: number;
   lexical_score: number;
+  is_current?: boolean | null;
+  fact_status?: string | null;
+  domain_keys?: string[] | null;
 };
 
 type RpcVectorRow = {
@@ -40,6 +43,9 @@ type RpcVectorRow = {
   updated_at: string | null;
   vector_rank: number;
   vector_score: number;
+  is_current?: boolean | null;
+  fact_status?: string | null;
+  domain_keys?: string[] | null;
 };
 
 function mapLexical(row: RpcLexicalRow): KnowledgeSearchHit {
@@ -57,6 +63,9 @@ function mapLexical(row: RpcLexicalRow): KnowledgeSearchHit {
     updatedAt: row.updated_at,
     rank: row.lexical_rank,
     score: row.lexical_score,
+    isCurrent: row.is_current,
+    factStatus: row.fact_status,
+    domainKeys: row.domain_keys,
   };
 }
 
@@ -75,6 +84,9 @@ function mapVector(row: RpcVectorRow): KnowledgeSearchHit {
     updatedAt: row.updated_at,
     rank: row.vector_rank,
     score: row.vector_score,
+    isCurrent: row.is_current,
+    factStatus: row.fact_status,
+    domainKeys: row.domain_keys,
   };
 }
 

@@ -659,6 +659,30 @@ export async function createDerivedResourceLive(input: {
     });
   }
 
+  if (input.kind === "knowledge_candidate") {
+    const { createServerSupabaseClient } = await import("@/lib/supabase/server");
+    const { captureConversationCandidate } = await import(
+      "@/lib/application/knowledge-factory-service"
+    );
+    const messages = await persist.chat.listMessages(thread.id);
+    const assistant =
+      [...messages].reverse().find((m) => m.role === "assistant") ?? null;
+    const user =
+      [...messages].reverse().find((m) => m.role === "user") ?? null;
+    const client = await createServerSupabaseClient();
+    await captureConversationCandidate(client, {
+      access: session.access,
+      threadId: thread.id,
+      messageId: input.messageId ?? assistant?.id ?? null,
+      userQuestion: user?.content ?? input.title,
+      assistantAnswer: assistant?.content ?? "",
+      evidenceTitles: (assistant?.citations ?? []).map((c) => c.title),
+      instruction: input.title || "ナレッジ候補",
+      visibility: thread.visibility,
+      containsPersonalConversation: thread.visibility === "private",
+    });
+  }
+
   return resource;
 }
 
@@ -844,6 +868,36 @@ async function writeAssistantReply(
     hints: { researchSummary, artifactSummary },
   });
 
+  try {
+    const { isKnowledgeCaptureUtterance } = await import("@regapro/knowledge");
+    if (isKnowledgeCaptureUtterance(lastUser)) {
+      const { createServerSupabaseClient } = await import("@/lib/supabase/server");
+      const { captureConversationCandidate } = await import(
+        "@/lib/application/knowledge-factory-service"
+      );
+      const prevAssistant = [...messages]
+        .reverse()
+        .find((m) => m.role === "assistant");
+      const prevUser = [...messages]
+        .reverse()
+        .find((m) => m.role === "user" && m.content !== lastUser);
+      const client = await createServerSupabaseClient();
+      await captureConversationCandidate(client, {
+        access: session.access,
+        threadId: input.threadId,
+        messageId: prevAssistant?.id ?? null,
+        userQuestion: prevUser?.content ?? lastUser,
+        assistantAnswer: prevAssistant?.content ?? answer.text,
+        evidenceTitles: (prevAssistant?.citations ?? []).map((c) => c.title),
+        instruction: lastUser,
+        visibility: input.visibility,
+        containsPersonalConversation: input.visibility === "private",
+      });
+    }
+  } catch (err) {
+    console.error("[knowledge-factory] capture skipped", err);
+  }
+
   const messageId = newId();
   await persist.chat.appendMessage(
     {
@@ -987,10 +1041,13 @@ async function createAndCompleteResearch(
         const { createKnowledgeCandidateFromResearch } = await import(
           "@/lib/application/knowledge-candidate-service"
         );
+        const { resolveAppSession } = await import("@/lib/application/session-access");
         const client = await createServerSupabaseClient();
+        const session = await resolveAppSession({});
         await createKnowledgeCandidateFromResearch(client, {
           orgId: input.orgId,
           userId: input.userId,
+          access: session.access,
           threadId: input.threadId,
           messageId: input.messageId,
           title: `公開情報の候補 ${new Date().toISOString().slice(0, 10)}`,
@@ -999,7 +1056,9 @@ async function createAndCompleteResearch(
             .map((s) => `${s.title}\n${s.canonicalUrl}\n${s.snippet}`)
             .join("\n\n"),
           confidentialityLevel: "company",
-          fromPrivateConversation: false,
+          fromPrivateConversation: input.visibility === "private",
+          url: result.sources[0]?.canonicalUrl ?? null,
+          retrievedAt: result.sources[0]?.retrievedAt ?? null,
         });
       } catch {
         // Candidate write is optional; research result still stands.

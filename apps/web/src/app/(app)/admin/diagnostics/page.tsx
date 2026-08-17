@@ -2,16 +2,29 @@ import { PageHeader, ConnectionStatus, StatusBadge } from "@/components/ui/primi
 import { getProcessUsageSnapshot, listAnswerDiagnostics } from "@regapro/ai-runtime";
 import { getDataMode, isDevSampleMode } from "@/lib/supabase/env";
 import { cloudRuntimeStatus } from "@/lib/application/ai-runtime-factory";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { resolveAppSession } from "@/lib/application/session-access";
+import { factoryCounts } from "@/lib/application/knowledge-factory-service";
 
 export const metadata = { title: "診断情報" };
 export const dynamic = "force-dynamic";
 
-export default function DiagnosticsPage() {
+export default async function DiagnosticsPage() {
   const mode = getDataMode();
   const sample = isDevSampleMode();
   const runtime = cloudRuntimeStatus();
   const usage = getProcessUsageSnapshot();
   const diagnostics = listAnswerDiagnostics();
+  let factory: Awaited<ReturnType<typeof factoryCounts>> | null = null;
+  if (!sample) {
+    try {
+      const session = await resolveAppSession({});
+      const client = await createServerSupabaseClient();
+      factory = await factoryCounts(client, session.access.organizationId);
+    } catch {
+      factory = null;
+    }
+  }
   return (
     <div className="space-y-6">
       <PageHeader
@@ -97,6 +110,17 @@ export default function DiagnosticsPage() {
           失敗 {usage.failures} 回。料金そのものは一般画面に出しません。
         </p>
       </section>
+      {factory ? (
+        <section className="space-y-1">
+          <h2 className="text-[14px] font-semibold">ナレッジ生産（件数のみ）</h2>
+          <p className="text-[13px] text-text-secondary">
+            Source {factory.sources} / Job {factory.jobs} / 候補 {factory.candidates} /
+            承認 {factory.approved} / 公開 {factory.published} / チャンク {factory.chunks} /
+            埋め込み {factory.embeddings} / 重複 {factory.duplicates} / 矛盾 {factory.conflicts} /
+            失敗Job {factory.failedJobs}
+          </p>
+        </section>
+      ) : null}
       <section className="space-y-2">
         <h2 className="text-[14px] font-semibold">直近の回答経路（件数のみ）</h2>
         {diagnostics.length === 0 ? (

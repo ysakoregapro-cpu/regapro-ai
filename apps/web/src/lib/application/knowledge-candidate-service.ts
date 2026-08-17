@@ -1,9 +1,13 @@
 import "server-only";
 import { assertNotDirectPublishFromAi } from "@regapro/knowledge";
-import { confidentialityRank } from "@regapro/shared";
 import type { ConfidentialityLevel } from "@regapro/shared";
+import type { AccessContext } from "@regapro/security";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
+import {
+  createKnowledgeSourceAndJob,
+  processIngestionJobUntilIdle,
+} from "@/lib/application/knowledge-factory-service";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Client = SupabaseClient<Database, "public", any>;
@@ -17,36 +21,41 @@ export async function createKnowledgeCandidateFromResearch(
   input: {
     orgId: string;
     userId: string;
+    access?: AccessContext;
     threadId: string;
     messageId: string | null;
     title: string;
     content: string;
     confidentialityLevel: ConfidentialityLevel;
     fromPrivateConversation: boolean;
+    url?: string | null;
+    retrievedAt?: string | null;
   },
 ): Promise<{ id: string } | null> {
   if (input.fromPrivateConversation) return null;
   assertNotDirectPublishFromAi("ai_answer", "draft");
+  if (!input.access) return null;
 
-  const { data, error } = await client
-    .from("knowledge_candidates")
-    .insert({
-      org_id: input.orgId,
-      title: input.title.slice(0, 200),
-      content: input.content.slice(0, 8_000),
-      suggested_confidentiality_level: confidentialityRank(input.confidentialityLevel),
-      suggested_visibility: "organization",
-      source_thread_id: input.threadId,
-      source_message_ids: input.messageId ? [input.messageId] : [],
-      source_user_id: input.userId,
-      contains_personal_conversation: false,
-      contains_personal_data: false,
-      contains_compensation_data: false,
-      classification_reasons: ["web_research_candidate"],
-      status: "draft",
-    })
-    .select("id")
-    .single();
-  if (error || !data) return null;
-  return { id: data.id };
+  const created = await createKnowledgeSourceAndJob(client, {
+    orgId: input.orgId,
+    userId: input.userId,
+    access: input.access,
+    originKind: "research",
+    title: input.title,
+    text: input.content,
+    url: input.url ?? null,
+    confidentialityLevel: input.confidentialityLevel,
+    visibility: "organization",
+    originThreadId: input.threadId,
+    originMessageId: input.messageId,
+    domainKeys: ["company_common"],
+  });
+  if (!created.duplicate) {
+    await processIngestionJobUntilIdle(client, {
+      jobId: created.jobId,
+      access: input.access,
+      maxTicks: 8,
+    });
+  }
+  return { id: created.sourceId };
 }

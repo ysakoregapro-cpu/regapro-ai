@@ -22,7 +22,8 @@
     "db:test-rls": "node scripts/rls-integration/run.mjs",
     "smoke:supabase-mode": "node scripts/smoke-supabase-mode.mjs",
     "smoke:cloud-runtime": "node --env-file=apps/web/.env.local scripts/smoke-cloud-runtime.mjs",
-    "e2e:answer-pipeline": "node --env-file=apps/web/.env.local scripts/e2e-answer-pipeline.mjs"
+    "e2e:answer-pipeline": "node --env-file=apps/web/.env.local scripts/e2e-answer-pipeline.mjs",
+    "smoke:knowledge-factory": "node --env-file=apps/web/.env.local scripts/smoke-knowledge-factory.mjs"
   },
   "engines": {
     "node": ">=24.0.0"

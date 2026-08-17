@@ -1,5 +1,7 @@
 import { PageHeader } from "@/components/ui/primitives";
 import { ADMIN_NAV } from "@/lib/navigation";
+import { KnowledgeAdminClient } from "@/components/workspace/KnowledgeAdminClient";
+import { isDevSampleMode } from "@/lib/supabase/env";
 
 type Props = { params: Promise<{ section: string }> };
 
@@ -18,6 +20,12 @@ export default async function AdminSectionPage({ params }: Props) {
         このセクションの詳細操作は、権限とデータモードに応じて Application Service
         経由で提供されます。サンプルモードでは参照用の骨格を表示しています。
       </p>
+      {section === "knowledge" ? (
+        <KnowledgeAdminClient
+          mode={isDevSampleMode() ? "dev-sample" : "supabase"}
+          initialTab="review"
+        />
+      ) : null}
       {section === "connections" ? (
         <ul className="text-[13px]">
           <li className="border-b border-border py-2">Google Docs — 未接続</li>

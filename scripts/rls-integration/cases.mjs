@@ -852,5 +852,42 @@ async function runKnowledge(reporter, { sales, hr, exec, adminFix, ids }) {
     (r) => r.id === ids.knowledgeDraft.documentId && r.status === "draft",
   );
 
+  const candInLex = await sales.client.rpc("regapro_knowledge_lexical_search", {
+    p_query: "factory-candidate-not-in-rpc",
+    p_limit: 20,
+  });
+  if (candInLex.error) {
+    reporter.fail("knowledge factory: candidate lexical check", candInLex.error.message);
+  } else {
+    const leaked = (candInLex.data ?? []).some(
+      (h) => String(h.content ?? "").includes("factory-candidate-not-in-rpc"),
+    );
+    if (!leaked) {
+      reporter.pass("knowledge factory: candidate excluded from lexical RPC", "ok");
+    } else {
+      reporter.fail("knowledge factory: candidate leaked into lexical RPC", "found");
+    }
+  }
+
+  reporter.expectDenied(
+    "knowledge factory: sales DENIED private source",
+    await sales.client
+      .from("knowledge_sources")
+      .select("id")
+      .eq("id", ids.knowledgePrivateSourceId),
+    ids.knowledgePrivateSourceId,
+  );
+
+  const reviewInsert = await sales.client.from("knowledge_candidate_reviews").insert({
+    org_id: ids.orgId,
+    candidate_id: ids.knowledgeFactoryCandidateId,
+    reviewer_id: sales.userId,
+    action: "approve",
+  });
+  reporter.expectWriteDenied(
+    "knowledge factory: editor without review cannot insert review",
+    reviewInsert,
+  );
+
   void adminFix;
 }

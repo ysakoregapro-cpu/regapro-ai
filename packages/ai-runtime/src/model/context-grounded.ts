@@ -18,7 +18,7 @@ export class ContextGroundedModelProvider implements ModelProvider {
 
     if (internals.length === 0 && web.length === 0) {
       return {
-        text: "該当する社内情報は見つかりませんでした。",
+        text: "確認できる社内Knowledgeがありません。",
         confidence: 0.35,
         providerId: this.id,
         modelId: "context-grounded",

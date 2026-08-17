@@ -87,6 +87,24 @@ describe("CapabilityModelRouter", () => {
         hasWebEvidence: false,
       }).skipLlm,
     ).toBe(true);
+
+    expect(
+      router.route({
+        intent: "internal_knowledge",
+        text: "社内の許可状況を確認して",
+        hasInternalEvidence: false,
+        hasWebEvidence: false,
+      }).skipLlm,
+    ).toBe(true);
+
+    expect(
+      router.route({
+        intent: "web_search",
+        text: "通信市場の最新動向を調べて",
+        hasInternalEvidence: false,
+        hasWebEvidence: false,
+      }).skipLlm,
+    ).toBe(false);
   });
 });
 

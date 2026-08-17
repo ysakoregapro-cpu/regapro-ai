@@ -1,7 +1,19 @@
 import type { AccessContext } from "@regapro/security";
+import { queryLooksHistorical } from "@regapro/knowledge";
 import type { RetrievalPlanner } from "./ports.js";
 import type { IntentDecision, RetrievalPlan } from "./types.js";
 import { extractRetrievalSignals } from "./retrieval-signals.js";
+
+function preferredDomains(departmentKey: string | null): string[] {
+  const map: Record<string, string[]> = {
+    sales: ["sales", "company_common"],
+    people: ["staffing", "recruitment", "company_common"],
+    executive_strategy: ["management", "company_common"],
+    telecom: ["telecom", "company_common"],
+    engineering: ["engineering", "company_common"],
+  };
+  return map[departmentKey ?? ""] ?? ["company_common"];
+}
 
 export class DefaultRetrievalPlanner implements RetrievalPlanner {
   plan(input: {
@@ -24,6 +36,8 @@ export class DefaultRetrievalPlanner implements RetrievalPlanner {
       needToolExecution: false,
       includePrivateConversations: false,
       includeAuditCases: false,
+      includeHistoricalKnowledge: queryLooksHistorical(input.text ?? ""),
+      preferredDomainKeys: preferredDomains(input.access.departmentKey),
     };
 
     switch (intent) {

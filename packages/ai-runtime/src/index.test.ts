@@ -90,6 +90,33 @@ describe("DefaultRetrievalPlanner", () => {
     expect(plan.needInternalKnowledge).toBe(true);
     expect(plan.includePrivateConversations).toBe(false);
   });
+
+  it("attaches department domains and historical flag", () => {
+    const current = planner.plan({
+      intent: {
+        intent: "internal_knowledge",
+        confidence: 1,
+        reason: "t",
+        provider: "rules",
+      },
+      access: access(),
+      text: "社内の許可状況を確認",
+    });
+    expect(current.preferredDomainKeys).toContain("sales");
+    expect(current.includeHistoricalKnowledge).toBe(false);
+
+    const past = planner.plan({
+      intent: {
+        intent: "internal_knowledge",
+        confidence: 1,
+        reason: "t",
+        provider: "rules",
+      },
+      access: access(),
+      text: "当時の許可状況は",
+    });
+    expect(past.includeHistoricalKnowledge).toBe(true);
+  });
 });
 
 describe("security-aware retrieval", () => {
@@ -304,6 +331,69 @@ describe("HybridInternalKnowledgeRetriever", () => {
     expect(vectorCalled).toBe(false);
     expect(items).toHaveLength(1);
     expect(items[0]?.sourceType).toBe("knowledge_chunk");
+  });
+
+  it("prefers current knowledge over historical unless the plan asks for history", async () => {
+    const search: KnowledgeSearchPort = {
+      async lexicalSearch() {
+        return [
+          {
+            chunkId: "old",
+            documentId: "d-old",
+            documentTitle: "許可",
+            content: "許可取得準備中",
+            confidentialityLevel: 1,
+            visibility: "organization",
+            ownerUserId: null,
+            projectId: null,
+            departmentId: null,
+            sourceType: "manual",
+            updatedAt: "2026-04-01T00:00:00.000Z",
+            rank: 1,
+            score: 0.9,
+            isCurrent: false,
+            factStatus: "historical",
+          },
+          {
+            chunkId: "now",
+            documentId: "d-now",
+            documentTitle: "許可",
+            content: "許可取得済み",
+            confidentialityLevel: 1,
+            visibility: "organization",
+            ownerUserId: null,
+            projectId: null,
+            departmentId: null,
+            sourceType: "manual",
+            updatedAt: "2026-08-01T00:00:00.000Z",
+            rank: 2,
+            score: 0.8,
+            isCurrent: true,
+            factStatus: "fact",
+          },
+        ];
+      },
+      async vectorSearch() {
+        return [];
+      },
+    };
+    const retriever = new HybridInternalKnowledgeRetriever(
+      search,
+      new DisconnectedEmbeddingProvider(),
+    );
+    const current = await retriever.retrieve({
+      access: access(),
+      plan,
+      query: "許可の状況",
+    });
+    expect(current.map((i) => i.id)).toEqual(["now"]);
+
+    const historical = await retriever.retrieve({
+      access: access(),
+      plan: { ...plan, includeHistoricalKnowledge: true },
+      query: "当時の許可状況",
+    });
+    expect(historical.map((i) => i.id).sort()).toEqual(["now", "old"]);
   });
 
   it("fuses lexical and vector ranks when embedding available", async () => {
@@ -664,6 +754,36 @@ describe("live E2E fixtures (mocked providers, no external APIs)", () => {
     expect(answer.text).not.toMatch(/求人票作成の標準手順/);
   });
 
+  it("skips the LLM for internal-only requests with zero evidence", async () => {
+    let called = false;
+    const failing = {
+      id: "vercel-gateway" as const,
+      connected: true,
+      async generate() {
+        called = true;
+        throw new Error("GATEWAY_HTTP_500");
+      },
+    };
+    const deps = createDefaultAnswerPipelineDeps({
+      model: new FallbackChainModelProvider([failing]),
+    });
+    const answer = await runAnswerPipeline(deps, {
+      request: {
+        organizationId: "org-1",
+        userId: "user-1",
+        threadId: "th-zero",
+        messageId: null,
+        userText: CASE_A,
+        access: access(),
+        allowAuditBypass: false,
+      },
+    });
+    expect(called).toBe(false);
+    expect(answer.model.providerId).toBe("rules-template");
+    expect(answer.text).toMatch(/確認できる社内Knowledgeがありません/);
+    expect(answer.text).not.toMatch(/求人票作成の標準手順/);
+  });
+
   it("falls to honest fallback, never sample catalog, on provider failure", async () => {
     const failing = {
       id: "vercel-gateway" as const,
@@ -681,7 +801,7 @@ describe("live E2E fixtures (mocked providers, no external APIs)", () => {
         userId: "user-1",
         threadId: "th-fail",
         messageId: null,
-        userText: CASE_A,
+        userText: CASE_B,
         access: access(),
         allowAuditBypass: false,
       },

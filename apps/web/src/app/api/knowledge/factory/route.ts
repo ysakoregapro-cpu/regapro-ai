@@ -1,0 +1,321 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { resolveAppSession } from "@/lib/application/session-access";
+import { isDevSampleMode } from "@/lib/supabase/env";
+import { ConfidentialityLevelSchema, VisibilitySchema } from "@regapro/shared";
+import {
+  GenericTranscriptIngestPort,
+  KnowledgeOriginKind,
+  KnowledgeReviewStatus,
+  transcriptToReusableText,
+} from "@regapro/knowledge";
+import {
+  batchReviewCandidates,
+  createKnowledgeSourceAndJob,
+  extractSourceText,
+  factoryCounts,
+  ingestUrlSource,
+  listIngestionJobs,
+  listReviewInbox,
+  processIngestionJobUntilIdle,
+  retryDocumentEmbedding,
+  reviewCandidate,
+} from "@/lib/application/knowledge-factory-service";
+
+export const runtime = "nodejs";
+
+const IngestSchema = z.object({
+  action: z.literal("ingest").optional(),
+  originKind: KnowledgeOriginKind.default("paste"),
+  title: z.string().min(1).max(200),
+  text: z.string().max(2_000_000).optional().default(""),
+  question: z.string().max(4000).optional(),
+  answer: z.string().max(20_000).optional(),
+  url: z.string().url().optional(),
+  domainKeys: z.array(z.string()).optional(),
+  sourceDate: z.string().optional(),
+  confidentialityLevel: ConfidentialityLevelSchema.default("company"),
+  visibility: VisibilitySchema.default("organization"),
+  expertName: z.string().max(120).optional(),
+  transcript: z.unknown().optional(),
+});
+
+const ProcessSchema = z.object({
+  action: z.literal("process"),
+  jobId: z.string().uuid(),
+});
+
+const ReviewSchema = z.object({
+  action: z.literal("review"),
+  candidateId: z.string().uuid(),
+  reviewAction: z.enum([
+    "approve",
+    "edit_approve",
+    "reject",
+    "merge",
+    "mark_duplicate",
+    "supersede",
+  ]),
+  title: z.string().max(200).optional(),
+  content: z.string().max(20_000).optional(),
+  visibility: VisibilitySchema.optional(),
+  comment: z.string().max(500).optional(),
+});
+
+const BatchSchema = z.object({
+  action: z.literal("batch_review"),
+  candidateIds: z.array(z.string().uuid()).min(1).max(40),
+  reviewAction: z.enum(["approve", "reject"]),
+});
+
+const RetrySchema = z.object({
+  action: z.literal("retry_embed"),
+  documentId: z.string().uuid(),
+});
+
+function sampleBlocked() {
+  return NextResponse.json(
+    { error: "Knowledge Factory は supabase モードで利用できます。" },
+    { status: 400 },
+  );
+}
+
+export async function GET(req: Request) {
+  if (isDevSampleMode()) {
+    return NextResponse.json({
+      mode: "dev-sample",
+      inbox: [],
+      jobs: [],
+      counts: {},
+    });
+  }
+  const session = await resolveAppSession({});
+  const client = await createServerSupabaseClient();
+  const url = new URL(req.url);
+  const view = url.searchParams.get("view") ?? "inbox";
+  const status = url.searchParams.get("status");
+  if (view === "counts") {
+    return NextResponse.json({
+      counts: await factoryCounts(client, session.access.organizationId),
+    });
+  }
+  if (view === "jobs") {
+    return NextResponse.json({
+      jobs: await listIngestionJobs(client, session.access.organizationId),
+    });
+  }
+  const inbox = await listReviewInbox(
+    client,
+    session.access.organizationId,
+    status && KnowledgeReviewStatus.safeParse(status).success
+      ? (status as z.infer<typeof KnowledgeReviewStatus>)
+      : undefined,
+  );
+  return NextResponse.json({ inbox });
+}
+
+export async function POST(req: Request) {
+  if (isDevSampleMode()) return sampleBlocked();
+  const session = await resolveAppSession({});
+  const client = await createServerSupabaseClient();
+  const contentType = req.headers.get("content-type") ?? "";
+
+  if (contentType.includes("multipart/form-data")) {
+    const form = await req.formData();
+    const files = form.getAll("files").filter((f): f is File => f instanceof File);
+    if (files.length === 0) {
+      return NextResponse.json({ error: "ファイルがありません" }, { status: 400 });
+    }
+    const results: Array<{
+      name: string;
+      ok: boolean;
+      sourceId?: string;
+      jobId?: string;
+      error?: string;
+    }> = [];
+    for (const file of files) {
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const extracted = extractSourceText({
+          mimeType: file.type || "application/octet-stream",
+          filename: file.name,
+          bytes,
+        });
+        if (!extracted.text) {
+          results.push({
+            name: file.name,
+            ok: false,
+            error: extracted.limitation ?? "extract_failed",
+          });
+          continue;
+        }
+        const created = await createKnowledgeSourceAndJob(client, {
+          orgId: session.access.organizationId,
+          userId: session.access.userId,
+          access: session.access,
+          originKind: "file",
+          title: file.name.slice(0, 200),
+          text: extracted.text,
+          confidentialityLevel: "company",
+          visibility: "organization",
+          domainKeys: ["company_common"],
+        });
+        if (!created.duplicate) {
+          await processIngestionJobUntilIdle(client, {
+            jobId: created.jobId,
+            access: session.access,
+            maxTicks: 8,
+          });
+        }
+        results.push({
+          name: file.name,
+          ok: true,
+          sourceId: created.sourceId,
+          jobId: created.jobId,
+        });
+      } catch (err) {
+        results.push({
+          name: file.name,
+          ok: false,
+          error: err instanceof Error ? err.message : "failed",
+        });
+      }
+    }
+    return NextResponse.json({ ok: true, results });
+  }
+
+  const json = await req.json();
+  const action = typeof json?.action === "string" ? json.action : "ingest";
+
+  try {
+    if (action === "process") {
+      const parsed = ProcessSchema.safeParse({ ...json, action });
+      if (!parsed.success) {
+        return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+      }
+      const progress = await processIngestionJobUntilIdle(client, {
+        jobId: parsed.data.jobId,
+        access: session.access,
+      });
+      return NextResponse.json({ ok: true, progress });
+    }
+
+    if (action === "review") {
+      const parsed = ReviewSchema.safeParse({ ...json, action });
+      if (!parsed.success) {
+        return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+      }
+      const result = await reviewCandidate(client, {
+        access: session.access,
+        candidateId: parsed.data.candidateId,
+        action: parsed.data.reviewAction,
+        title: parsed.data.title,
+        content: parsed.data.content,
+        visibility: parsed.data.visibility,
+        comment: parsed.data.comment,
+      });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    if (action === "batch_review") {
+      const parsed = BatchSchema.safeParse({ ...json, action });
+      if (!parsed.success) {
+        return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+      }
+      const result = await batchReviewCandidates(client, {
+        access: session.access,
+        candidateIds: parsed.data.candidateIds,
+        action: parsed.data.reviewAction,
+      });
+      return NextResponse.json({
+        ok: true,
+        approvedIds: result.ok,
+        skipped: result.skipped,
+      });
+    }
+
+    if (action === "retry_embed") {
+      const parsed = RetrySchema.safeParse({ ...json, action });
+      if (!parsed.success) {
+        return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+      }
+      const result = await retryDocumentEmbedding(client, parsed.data.documentId);
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    const parsed = IngestSchema.safeParse({ ...json, action: "ingest" });
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    }
+    const data = parsed.data;
+    let text = data.text;
+    if (data.originKind === "qa") {
+      if (!data.question || !data.answer) {
+        return NextResponse.json({ error: "Q&A には質問と回答が必要です" }, { status: 400 });
+      }
+      text = `Q: ${data.question}\n\nA: ${data.answer}${
+        data.expertName ? `\n\n専門家: ${data.expertName}` : ""
+      }`;
+    }
+    if (data.originKind === "transcript" && data.transcript) {
+      const port = new GenericTranscriptIngestPort();
+      text = transcriptToReusableText(port.parse(data.transcript));
+    }
+    if (!text.trim() && data.originKind !== "url") {
+      return NextResponse.json({ error: "取り込む本文がありません" }, { status: 400 });
+    }
+    if (data.originKind === "url" && data.url) {
+      const created = await ingestUrlSource(client, {
+        orgId: session.access.organizationId,
+        userId: session.access.userId,
+        access: session.access,
+        originKind: "url",
+        title: data.title,
+        text,
+        url: data.url,
+        confidentialityLevel: data.confidentialityLevel,
+        visibility: data.visibility,
+        domainKeys: data.domainKeys,
+        sourceDate: data.sourceDate ?? null,
+      });
+      if (!created.duplicate && !created.limitation) {
+        await processIngestionJobUntilIdle(client, {
+          jobId: created.jobId,
+          access: session.access,
+        });
+      }
+      return NextResponse.json({ ok: true, ...created });
+    }
+
+    const created = await createKnowledgeSourceAndJob(client, {
+      orgId: session.access.organizationId,
+      userId: session.access.userId,
+      access: session.access,
+      originKind: data.originKind,
+      title: data.title,
+      text,
+      question: data.question,
+      answer: data.answer,
+      url: data.url,
+      confidentialityLevel: data.confidentialityLevel,
+      visibility: data.visibility,
+      domainKeys: data.domainKeys,
+      sourceDate: data.sourceDate ?? null,
+    });
+    if (!created.duplicate) {
+      await processIngestionJobUntilIdle(client, {
+        jobId: created.jobId,
+        access: session.access,
+      });
+    }
+    return NextResponse.json({ ok: true, ...created });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "failed";
+    const status =
+      message.startsWith("UNAUTHORIZED") || message.includes("PRIVATE_SOURCE")
+        ? 403
+        : 400;
+    return NextResponse.json({ error: message }, { status });
+  }
+}

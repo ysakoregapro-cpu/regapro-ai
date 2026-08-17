@@ -222,6 +222,7 @@ export async function ingestPublishedDocumentChunks(
       .in("id", plan.toSoftDeleteIds);
   }
 
+  let embeddedCount = 0;
   for (const draft of plan.toUpsert) {
     const row = {
       document_version_id: version.id,
@@ -257,6 +258,7 @@ export async function ingestPublishedDocumentChunks(
           row.embedding_model = vec.modelId;
           row.embedding_version = vec.modelVersion;
           row.embedding_dimensions = vec.dimensions;
+          embeddedCount += 1;
         }
       } catch {
         // Keep null embedding — lexical-only retrieval.
@@ -290,7 +292,7 @@ export async function ingestPublishedDocumentChunks(
 
   return {
     chunkCount: drafts.length,
-    embedded: embedding.available,
+    embedded: embedding.available && (plan.toUpsert.length === 0 || embeddedCount > 0),
   };
 }
 

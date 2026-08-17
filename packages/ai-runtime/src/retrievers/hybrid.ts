@@ -11,6 +11,7 @@ import type {
 import {
   createDefaultEmbeddingProvider,
   PassthroughKnowledgeReranker,
+  preferCurrentKnowledge,
   reciprocalRankFusion,
 } from "@regapro/knowledge";
 import type { InternalKnowledgeRetriever } from "../ports.js";
@@ -31,6 +32,9 @@ export type KnowledgeSearchHit = {
   updatedAt: string | null;
   rank: number;
   score: number;
+  isCurrent?: boolean | null;
+  factStatus?: string | null;
+  domainKeys?: string[] | null;
 };
 
 /**
@@ -80,6 +84,7 @@ function toRetrieved(
     relevance: Math.min(1, hit.relevance * freshnessBoost(hit.updatedAt)),
     freshness: hit.updatedAt,
     excerpt,
+    domain: hit.domainKeys?.[0] ?? null,
   };
 }
 
@@ -164,6 +169,22 @@ export class HybridInternalKnowledgeRetriever implements InternalKnowledgeRetrie
       hits: fused,
     });
 
-    return reranked.map(toRetrieved);
+    const currentFirst = preferCurrentKnowledge(
+      reranked.map((h) => ({
+        ...h,
+        current: h.isCurrent !== false,
+        factStatus: h.factStatus,
+      })),
+      Boolean(input.plan.includeHistoricalKnowledge),
+    );
+
+    const preferred = input.plan.preferredDomainKeys ?? [];
+    const ranked = [...currentFirst].sort((a, b) => {
+      const aHit = preferred.some((k) => (a.domainKeys ?? []).includes(k)) ? 1 : 0;
+      const bHit = preferred.some((k) => (b.domainKeys ?? []).includes(k)) ? 1 : 0;
+      return bHit - aHit;
+    });
+
+    return ranked.map(toRetrieved);
   }
 }
