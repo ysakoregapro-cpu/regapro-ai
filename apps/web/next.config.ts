@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Playwright and some tools use 127.0.0.1 while `next dev` binds localhost.
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   transpilePackages: [
     "@regapro/shared",
     "@regapro/security",

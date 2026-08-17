@@ -8,11 +8,14 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "e2e": "playwright test --config=playwright.config.ts",
+    "e2e:release": "playwright test --config=playwright.config.ts e2e/release-smoke.spec.ts",
+    "e2e:install": "playwright install chromium"
   },
   "dependencies": {
-    "@regapro/artifacts": "*",
     "@regapro/ai-runtime": "*",
+    "@regapro/artifacts": "*",
     "@regapro/database": "*",
     "@regapro/knowledge": "*",
     "@regapro/local-ai": "*",
@@ -35,6 +38,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",

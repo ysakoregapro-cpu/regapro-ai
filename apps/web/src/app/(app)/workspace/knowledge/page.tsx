@@ -4,8 +4,19 @@ import { KnowledgePageHeader } from "@/components/workspace/KnowledgeAdminClient
 
 export const metadata = { title: "ナレッジ" };
 
-export default function KnowledgePage() {
+export default async function KnowledgePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const rows = listKnowledge();
   const mode = isDevSampleMode() ? "dev-sample" : "supabase";
-  return <KnowledgePageHeader mode={mode} sampleRows={rows} />;
+  const params = await searchParams;
+  return (
+    <KnowledgePageHeader
+      mode={mode}
+      sampleRows={rows}
+      initialTab={params.tab}
+    />
+  );
 }

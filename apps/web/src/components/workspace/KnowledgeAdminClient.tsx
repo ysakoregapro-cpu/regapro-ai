@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { EmptyState, ListRow, PageHeader } from "@/components/ui/primitives";
 import { knowledgeReviewErrorMessage } from "@regapro/knowledge/approval-messages";
 import {
@@ -106,6 +107,21 @@ const REVIEW_TABS = [
 
 type FactoryTab = "ingest" | "qa" | "review" | "jobs" | "published";
 
+const FACTORY_TABS: readonly FactoryTab[] = [
+  "ingest",
+  "qa",
+  "review",
+  "jobs",
+  "published",
+];
+
+export function parseFactoryTab(raw: string | null | undefined): FactoryTab {
+  if (raw && (FACTORY_TABS as readonly string[]).includes(raw)) {
+    return raw as FactoryTab;
+  }
+  return "ingest";
+}
+
 export function KnowledgeAdminClient({
   mode,
   initialTab = "ingest",
@@ -113,7 +129,13 @@ export function KnowledgeAdminClient({
   mode: "dev-sample" | "supabase";
   initialTab?: FactoryTab;
 }) {
+  const router = useRouter();
   const [tab, setTab] = useState<FactoryTab>(initialTab);
+
+  function selectTab(id: FactoryTab) {
+    setTab(id);
+    router.replace(`/workspace/knowledge?tab=${id}`, { scroll: false });
+  }
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [inbox, setInbox] = useState<InboxRow[]>([]);
   const [jobs, setJobs] = useState<JobRow[]>([]);
@@ -447,7 +469,7 @@ export function KnowledgeAdminClient({
                 ? "font-medium text-accent"
                 : "text-text-secondary hover:text-text"
             }
-            onClick={() => setTab(id)}
+            onClick={() => selectTab(id)}
           >
             {label}
           </button>
@@ -1025,6 +1047,7 @@ export function KnowledgeAdminClient({
 export function KnowledgePageHeader({
   mode,
   sampleRows,
+  initialTab = "ingest",
 }: {
   mode: "dev-sample" | "supabase";
   sampleRows: readonly {
@@ -1033,7 +1056,9 @@ export function KnowledgePageHeader({
     category: string;
     business: string;
   }[];
+  initialTab?: string;
 }) {
+  const tab = parseFactoryTab(initialTab);
   return (
     <div className="space-y-6">
       <PageHeader
@@ -1060,7 +1085,7 @@ export function KnowledgePageHeader({
           ))
         )
       ) : (
-        <KnowledgeAdminClient mode={mode} />
+        <KnowledgeAdminClient mode={mode} initialTab={tab} />
       )}
     </div>
   );

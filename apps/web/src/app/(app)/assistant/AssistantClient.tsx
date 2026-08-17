@@ -704,7 +704,10 @@ export default function AssistantPage() {
         app sidebar for brand text alone.
       */}
       {/* Right pane */}
-      <aside className="hidden w-[var(--right-pane-width)] shrink-0 flex-col border-l border-border lg:flex">
+      <aside
+        data-testid="citation-pane"
+        className="hidden w-[var(--right-pane-width)] shrink-0 flex-col border-l border-border lg:flex"
+      >
         <div className="flex shrink-0 gap-1 border-b border-border px-2 py-2">
           {(
             [
@@ -821,7 +824,10 @@ function MessageBubble({
   const isUser = message.role === "user";
 
   return (
-    <article className={cn("group", isUser ? "flex justify-end" : "")}>
+    <article
+      data-testid={isUser ? "user-message" : "assistant-message"}
+      className={cn("group", isUser ? "flex justify-end" : "")}
+    >
       <div
         className={cn(
           "max-w-[92%] rounded-[10px] border px-3 py-2.5 sm:max-w-[85%]",
