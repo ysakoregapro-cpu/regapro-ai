@@ -43,8 +43,11 @@ Regapro AI は npm workspaces モノレポで構成される **ビジネス OS**
 ```
 regapro-ai/
 ├── apps/
-│   └── web/              # Next.js frontend + API
+│   ├── web/              # Next.js frontend + API
+│   └── local-agent/      # PC filesystem/git/terminal bridge
 ├── packages/
+│   ├── coding-runtime/   # Coding Agent Runtime (ports/adapters)
+│   ├── ai-runtime/       # Answer pipeline + IntentRouter
 │   ├── domain/           # Domain entities & services
 │   ├── application/      # Application services (use cases)
 │   ├── ui/               # Shared UI components

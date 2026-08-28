@@ -69,6 +69,14 @@ describe("RuleBasedIntentRouter", () => {
     expect(plan.needDeepResearch).toBe(false);
     expect(plan.needInternalKnowledge).toBe(true);
   });
+
+  it("routes pasted GAS to code without requiring a workspace", async () => {
+    const d = await router.route({
+      text: "このGAS直して\n```js\nfunction onOpen(){ SpreadsheetApp.getUi(); }\n```",
+    });
+    expect(d.intent).toBe("code");
+    expect(d.codingMode).toBe("pasted");
+  });
 });
 
 describe("sanitizeVisibleAnswerText", () => {

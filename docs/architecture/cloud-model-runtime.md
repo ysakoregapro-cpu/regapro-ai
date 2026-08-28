@@ -28,7 +28,7 @@ Local LLM や GPU が無くても、クラウド経由で同一機能を利用�
 | fast | `REGAPRO_MODEL_FAST` | 構造化・短い言い換え |
 | main | `REGAPRO_MODEL_MAIN` | 要約・一般生成 |
 | reasoning | `REGAPRO_MODEL_REASONING` | 経営分析・複数情報統合 |
-| code | `REGAPRO_MODEL_CODE` | TypeScript / GAS / SQL |
+| code | `REGAPRO_MODEL_CODE` | TypeScript / GAS / SQL / Vibe Coding |
 | vision | `REGAPRO_MODEL_VISION` | 画像・PDF |
 
 単純な Knowledge 取得は LLM を使わず ContextGrounded で返します。

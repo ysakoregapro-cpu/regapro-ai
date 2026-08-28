@@ -41,6 +41,8 @@ export type IntentDecision = {
   confidence: number;
   reason: string;
   provider: "rules" | "local_llm" | "server_llm";
+  /** Present when the utterance is a coding request. */
+  codingMode?: "pasted" | "workspace" | "vibe" | null;
 };
 
 export type RetrievalPlan = {
@@ -165,6 +167,19 @@ export type AnswerResult = {
     pagesFetched: number;
     browserSessions?: number;
   };
+  coding?: {
+    runId: string;
+    mode: "pasted" | "workspace" | "vibe";
+    status: string;
+    deviceLabel: string | null;
+    workspaceLabel: string | null;
+    currentStep: string;
+    toolNames: string[];
+    changedFiles: string[];
+    diffPreview: string | null;
+    pendingApproval: boolean;
+    verificationSummary: string | null;
+  } | null;
 };
 
 export type PipelineTrace = {
@@ -201,4 +216,5 @@ export type WorkflowAnswerHints = {
   researchSummary?: string | null;
   artifactSummary?: string | null;
   taskSummary?: string | null;
+  codingSummary?: string | null;
 };

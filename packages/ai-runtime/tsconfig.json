@@ -12,6 +12,7 @@
     { "path": "../shared" },
     { "path": "../security" },
     { "path": "../knowledge" },
-    { "path": "../web-intelligence" }
+    { "path": "../web-intelligence" },
+    { "path": "../coding-runtime" }
   ]
 }

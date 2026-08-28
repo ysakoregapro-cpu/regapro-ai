@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@regapro/ai-runtime": "*",
+    "@regapro/coding-runtime": "*",
     "@regapro/artifacts": "*",
     "@regapro/database": "*",
     "@regapro/knowledge": "*",

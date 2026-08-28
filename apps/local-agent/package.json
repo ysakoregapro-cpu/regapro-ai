@@ -1,0 +1,26 @@
+{
+  "name": "@regapro/local-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "bin": {
+    "regapro-local-agent": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js",
+    "dev": "node dist/main.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@regapro/coding-runtime": "*",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5",
+    "vitest": "^3.0.0"
+  }
+}

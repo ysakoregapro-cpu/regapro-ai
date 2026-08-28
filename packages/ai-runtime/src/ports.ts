@@ -68,6 +68,21 @@ export type ContextBuilder = {
   }): AIContext;
 };
 
+export type ModelToolDefinition = {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+};
+
+export type ModelConversationMessage = {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  toolCallId?: string;
+};
+
 export type ModelGenerateInput = {
   access: AccessContext;
   userText: string;
@@ -79,6 +94,8 @@ export type ModelGenerateInput = {
   /** Knowledge Factory structured extraction. Does not change answer routing. */
   task?: "answer" | "knowledge_extraction";
   systemOverride?: string;
+  tools?: ModelToolDefinition[];
+  conversation?: ModelConversationMessage[];
 };
 
 export type ModelGenerateOutput = {
@@ -92,6 +109,11 @@ export type ModelGenerateOutput = {
   fallbackCount?: number;
   usage?: import("./types.js").ModelUsageMetadata | null;
   estimatedCostUsd?: number | null;
+  toolCalls?: Array<{
+    id: string;
+    name: string;
+    arguments: Record<string, unknown>;
+  }>;
 };
 
 export type ModelProvider = {
@@ -106,7 +128,27 @@ export type AnswerComposer = {
     context: AIContext;
     plan: RetrievalPlan;
     intent: IntentDecision;
+    coding?: NonNullable<AnswerResult["coding"]> | null;
   }): AnswerResult;
+};
+
+export type CodingRuntimeResult = {
+  text: string;
+  modelId: string;
+  role?: import("./types.js").ModelRole | null;
+  usage?: import("./types.js").ModelUsageMetadata | null;
+  estimatedCostUsd?: number | null;
+  limitations: string[];
+  coding: NonNullable<import("./types.js").AnswerResult["coding"]>;
+};
+
+export type CodingRuntimePort = {
+  run(input: {
+    access: AccessContext;
+    threadId: string | null;
+    userText: string;
+    knowledge: Array<{ title: string; excerpt: string }>;
+  }): Promise<CodingRuntimeResult>;
 };
 
 export type AnswerPipelineDeps = {
@@ -118,6 +160,7 @@ export type AnswerPipelineDeps = {
   contextBuilder: ContextBuilder;
   model: ModelProvider;
   answerComposer: AnswerComposer;
+  codingRuntime?: CodingRuntimePort;
   onTrace?: (trace: import("./types.js").PipelineTrace) => void;
 };
 

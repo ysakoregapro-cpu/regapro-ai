@@ -56,6 +56,16 @@ export class HonestFallbackModelProvider implements ModelProvider {
         limitations,
       };
     }
+    if (input.hints?.codingSummary) {
+      return {
+        text: input.hints.codingSummary,
+        confidence: 0.6,
+        providerId: this.id,
+        modelId: "honest-fallback",
+        connected: false,
+        limitations,
+      };
+    }
 
     const short =
       input.userText.replace(/\s+/g, " ").trim().slice(0, 40) +

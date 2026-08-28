@@ -84,6 +84,15 @@ export default async function DiagnosticsPage() {
           reason={runtime.exa ? "接続済み" : "インターフェースのみ。偽結果なし"}
         />
         <ConnectionStatus
+          label="コーディング実行"
+          connected={runtime.aiGatewayKeyPresent}
+          reason={
+            runtime.aiGatewayKeyPresent
+              ? "貼り付けコードはクラウド推論で実行。Local Agent は許可Workspaceのみ（service_roleなし）"
+              : "モデル未接続でも貼り付けコードは経路として受け付け、装いません"
+          }
+        />
+        <ConnectionStatus
           label="観測"
           connected={runtime.langfuse}
           reason={

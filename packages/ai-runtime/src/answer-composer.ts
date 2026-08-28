@@ -33,6 +33,7 @@ export class DefaultAnswerComposer implements AnswerComposer {
     };
     plan: AnswerResult["retrievalPlan"];
     intent: AnswerResult["intent"];
+    coding?: AnswerResult["coding"];
   }): AnswerResult {
     const citations = input.context.items.map((i) => ({
       ...i.citation,
@@ -66,7 +67,7 @@ export class DefaultAnswerComposer implements AnswerComposer {
       retrievalPlan: input.plan,
       intent: input.intent,
       confidence: input.model.confidence,
-      limitations: input.model.limitations,
+        limitations: input.model.limitations,
       generatedAt: new Date().toISOString(),
       retrieval: {
         internalCount: 0,
@@ -77,6 +78,7 @@ export class DefaultAnswerComposer implements AnswerComposer {
         sanitizedQueryCount: 0,
         pagesFetched: 0,
       },
+      coding: input.coding ?? null,
     };
   }
 }

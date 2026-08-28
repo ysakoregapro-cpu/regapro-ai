@@ -21,6 +21,7 @@ import {
   createCloudModelProviderFromEnv,
   createWebRetrieversFromEnv,
 } from "@/lib/application/ai-runtime-factory";
+import { createCodingRuntimePort } from "@/lib/application/coding-runtime-service";
 
 export { workflowToAnswerIntent, generateSampleAssistantAnswer };
 
@@ -51,6 +52,7 @@ export async function generateAssistantAnswer(input: {
     web,
     research,
     model,
+    codingRuntime: createCodingRuntimePort({ access: input.access, model }),
     onTrace: (trace: PipelineTrace) => {
       void emitRuntimeTrace({
         name: "regapro.answer",

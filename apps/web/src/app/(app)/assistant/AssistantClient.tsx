@@ -57,7 +57,7 @@ type ArtifactItem = {
   updatedAt: string;
 };
 
-type RightTab = "citations" | "tasks" | "artifacts";
+type RightTab = "citations" | "tasks" | "artifacts" | "files";
 
 function toLocalMessages(
   messages: Parameters<typeof toAssistantMessages>[0],
@@ -172,8 +172,22 @@ export default function AssistantPage() {
       setThreadTitle(bundle.thread.title);
       setThreadLevel(bundle.thread.confidentialityLevel);
       setThreadProjectId(bundle.thread.projectId);
-      let msgs = toLocalMessages(bundle.messages);
-      setMessages(msgs);
+      const msgs = toLocalMessages(bundle.messages);
+      setMessages((prev) => {
+        const optimistic = prev.filter((m) => m.id.startsWith("optimistic-"));
+        if (optimistic.length === 0) return msgs;
+        const merged = [...msgs];
+        for (const pending of optimistic) {
+          if (
+            !merged.some(
+              (m) => m.role === "user" && m.content === pending.content,
+            )
+          ) {
+            merged.push(pending);
+          }
+        }
+        return merged;
+      });
 
       const last = msgs[msgs.length - 1];
       const needsReply = last?.role === "user";
@@ -181,8 +195,22 @@ export default function AssistantPage() {
         setGenerating(true);
         const replied = await ensureThreadReply(id, `reply:${id}:${last.id}`);
         if (replied) {
-          msgs = toLocalMessages(replied.messages);
-          setMessages(msgs);
+          const nextMsgs = toLocalMessages(replied.messages);
+          setMessages((prev) => {
+            const optimistic = prev.filter((m) => m.id.startsWith("optimistic-"));
+            if (optimistic.length === 0) return nextMsgs;
+            const merged = [...nextMsgs];
+            for (const pending of optimistic) {
+              if (
+                !merged.some(
+                  (m) => m.role === "user" && m.content === pending.content,
+                )
+              ) {
+                merged.push(pending);
+              }
+            }
+            return merged;
+          });
         }
         setGenerating(false);
         setRightTab("citations");
@@ -414,12 +442,24 @@ export default function AssistantPage() {
     setGenerating(true);
     const kept = text;
     setInput("");
+    const optimisticId = `optimistic-${crypto.randomUUID()}`;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: optimisticId,
+        threadId,
+        role: "user",
+        content: kept,
+        createdAt: new Date().toISOString(),
+      },
+    ]);
     const follow = await fetch(`/api/chat/threads/${threadId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: text }),
     });
     if (!follow.ok) {
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
       setInput(kept);
       setToast("送信に失敗しました。入力内容は残しています。");
       setGenerating(false);
@@ -523,6 +563,11 @@ export default function AssistantPage() {
               {threadProjectId ? (
                 <p className="truncate text-[11px] text-text-secondary">
                   {projectName(threadProjectId)}
+                </p>
+              ) : null}
+              {activeTools.includes("make_code") ? (
+                <p className="truncate text-[11px] text-text-secondary">
+                  {generating ? "コーディング実行中" : "コード作業はこの会話から進められます"}
                 </p>
               ) : null}
             </div>
@@ -714,6 +759,7 @@ export default function AssistantPage() {
               { id: "citations", label: "引用" },
               { id: "tasks", label: "タスク" },
               { id: "artifacts", label: "成果物" },
+              { id: "files", label: "差分" },
             ] as const
           ).map((tab) => (
             <button
@@ -1100,6 +1146,13 @@ function RightPane({
             </ListRow>
           ))
         )
+      ) : null}
+
+      {tab === "files" ? (
+        <p className="px-1 py-4 text-[12px] text-text-secondary">
+          コードの変更と差分はこの会話の回答に表示されます。Local Agent
+          を接続すると、許可したフォルダのファイル一覧もここに出せます。
+        </p>
       ) : null}
     </div>
   );

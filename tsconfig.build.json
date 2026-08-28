@@ -10,6 +10,7 @@
     { "path": "./packages/notifications" },
     { "path": "./packages/local-ai" },
     { "path": "./packages/web-intelligence" },
+    { "path": "./packages/coding-runtime" },
     { "path": "./packages/ai-runtime" },
     { "path": "./packages/prompting" },
     { "path": "./packages/artifacts" },
@@ -17,6 +18,7 @@
     { "path": "./packages/ui" },
     { "path": "./services/research-worker" },
     { "path": "./services/artifact-worker" },
-    { "path": "./services/notification-worker" }
+    { "path": "./services/notification-worker" },
+    { "path": "./apps/local-agent" }
   ]
 }

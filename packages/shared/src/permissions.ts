@@ -25,6 +25,11 @@ export const PERMISSIONS = [
   "conversation:audit",
   "conversation:audit_manage",
   "clearance:manage",
+  "coding:use",
+  "coding:device_pair",
+  "coding:workspace_write",
+  "coding:dangerous_approve",
+  "coding:device_manage",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -42,6 +47,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "task:create",
     "task:update",
     "task:complete",
+    "coding:use",
+    "coding:device_pair",
   ],
   editor: [
     "chat:use",
@@ -58,6 +65,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "task:update",
     "task:complete",
     "task:assign",
+    "coding:use",
+    "coding:device_pair",
+    "coding:workspace_write",
   ],
   manager: [
     "chat:use",
@@ -80,6 +90,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "task:notification_manage",
     "member:manage",
     "audit:read",
+    "coding:use",
+    "coding:device_pair",
+    "coding:workspace_write",
+    "coding:dangerous_approve",
   ],
   // conversation:audit is intentionally NOT auto-granted with executive clearance.
   // Only admin gets it by default; grant narrowly via membership for real audits.

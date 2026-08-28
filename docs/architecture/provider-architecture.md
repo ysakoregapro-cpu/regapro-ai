@@ -28,6 +28,8 @@ ApplicationService
 
 LLM / 推論は [Cloud Model Runtime](./cloud-model-runtime.md)。Vercel AI Gateway は製品本体ではありません。
 
+コーディング（貼り付け / Local Workspace / Vibe）は [Coding Agent Runtime](./coding-agent.md)。filesystem は ai-runtime に埋めません。
+
 ```typescript
 // packages/application/src/providers/research-provider.ts
 

@@ -130,14 +130,42 @@ export async function runAnswerPipeline(
     });
 
     failureStage = "model";
-    const modelOut = await deps.model.generate({
-      access: input.request.access,
-      userText: input.request.userText,
-      context,
-      plan,
-      intent,
-      hints: input.hints,
-    });
+    let modelOut;
+    let codingView: import("./types.js").AnswerResult["coding"] = null;
+    if (deps.codingRuntime && intent.intent === "code") {
+      failureStage = "coding";
+      const coding = await deps.codingRuntime.run({
+        access: input.request.access,
+        threadId: input.request.threadId,
+        userText: input.request.userText,
+        knowledge: context.items.map((i) => ({
+          title: i.source,
+          excerpt: i.content.slice(0, 400),
+        })),
+      });
+      codingView = coding.coding;
+      modelOut = {
+        text: coding.text,
+        confidence: 0.78,
+        providerId: deps.model.id,
+        modelId: coding.modelId,
+        connected: deps.model.connected,
+        limitations: coding.limitations,
+        role: coding.role ?? "code",
+        fallbackCount: 0,
+        usage: coding.usage ?? null,
+        estimatedCostUsd: coding.estimatedCostUsd ?? null,
+      };
+    } else {
+      modelOut = await deps.model.generate({
+        access: input.request.access,
+        userText: input.request.userText,
+        context,
+        plan,
+        intent,
+        hints: input.hints,
+      });
+    }
 
     failureStage = "compose";
     const answer = deps.answerComposer.compose({
@@ -145,6 +173,7 @@ export async function runAnswerPipeline(
       context,
       plan,
       intent,
+      coding: codingView,
     });
     if (webError) {
       const reason =

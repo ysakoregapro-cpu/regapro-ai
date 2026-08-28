@@ -33,6 +33,12 @@ $$ LANGUAGE sql SECURITY DEFINER STABLE;
 | research_sources | member of org | system/worker | member+ | manager+ |
 | artifacts | member of org | member+ | member+ (creator or manager+) | manager+ |
 | audit_logs | admin+ | system only | — | — |
+| coding_devices | owner user | owner user | owner user | owner/admin |
+| coding_workspaces | owner user | owner user | owner user | owner/admin |
+| coding_runs | owner user | owner user | owner user | — |
+| coding_commands | device owner | system/agent via app | — | — |
+| coding_approvals | owner user | owner user | owner user | — |
+| coding_audit_events | admin+ | system only | — | — |
 
 **Role hierarchy:** owner > admin > manager > member > viewer
 

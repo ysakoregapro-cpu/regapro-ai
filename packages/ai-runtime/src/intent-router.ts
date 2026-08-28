@@ -1,6 +1,7 @@
 import type { IntentRouter } from "./ports.js";
 import type { AnswerIntent, IntentDecision } from "./types.js";
 import { extractRetrievalSignals } from "./retrieval-signals.js";
+import { classifyCodingIntent } from "@regapro/coding-runtime";
 
 const TOOL_HINTS = new Set<AnswerIntent>([
   "task",
@@ -24,11 +25,13 @@ export class RuleBasedIntentRouter implements IntentRouter {
         confidence: 0.95,
         reason: `workflow_hint:${input.workflowHint}`,
         provider: "rules",
+        codingMode: input.workflowHint === "code" ? "pasted" : null,
       };
     }
 
     const text = input.text.trim();
     const signals = extractRetrievalSignals(text);
+    const coding = classifyCodingIntent(text);
 
     if (signals.refuseWeb) {
       return {
@@ -36,6 +39,20 @@ export class RuleBasedIntentRouter implements IntentRouter {
         confidence: 0.92,
         reason: "refuse_web_internal_only",
         provider: "rules",
+      };
+    }
+
+    if (
+      coding.mode === "vibe" ||
+      coding.mode === "workspace" ||
+      (coding.mode === "pasted" && coding.pastedBlocks.length > 0)
+    ) {
+      return {
+        intent: "code",
+        confidence: coding.confidence,
+        reason: `coding:${coding.reason}`,
+        provider: "rules",
+        codingMode: coding.mode,
       };
     }
 
@@ -77,7 +94,7 @@ export class RuleBasedIntentRouter implements IntentRouter {
         },
         {
           intent: "code",
-          re: /コード|実装|Cursor|TypeScript|リファクタ/,
+          re: /コード|実装して|Cursor|TypeScript|リファクタ|GAS|Apps Script|vibe coding/,
           reason: "code_phrase",
         },
         {
@@ -94,6 +111,7 @@ export class RuleBasedIntentRouter implements IntentRouter {
           confidence: 0.8,
           reason: c.reason,
           provider: "rules",
+          codingMode: c.intent === "code" ? (coding.mode ?? "pasted") : null,
         };
       }
     }

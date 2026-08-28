@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
     "@regapro/notifications",
     "@regapro/local-ai",
     "@regapro/ai-runtime",
+    "@regapro/coding-runtime",
     "@regapro/web-intelligence",
     "@regapro/prompting",
     "@regapro/artifacts",

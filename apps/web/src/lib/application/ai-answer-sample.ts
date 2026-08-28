@@ -1,5 +1,6 @@
 import {
   createDefaultAnswerPipelineDeps,
+  HonestFallbackModelProvider,
   runAnswerPipeline,
   type AnswerIntent,
   type AnswerResult,
@@ -7,6 +8,7 @@ import {
 } from "@regapro/ai-runtime";
 import type { AccessContext } from "@regapro/security";
 import { listKnowledge } from "@/lib/application/catalog-service";
+import { createCodingRuntimePort } from "@/lib/application/coding-runtime-service";
 
 export function workflowToAnswerIntent(
   workflow: string | null | undefined,
@@ -58,9 +60,12 @@ export async function generateSampleAssistantAnswer(input: {
   workflowHint?: AnswerIntent | null;
   hints?: WorkflowAnswerHints;
 }): Promise<AnswerResult> {
+  const model = new HonestFallbackModelProvider();
   const deps = createDefaultAnswerPipelineDeps({
     loadKnowledge: async ({ access, query }) =>
       sampleKnowledgeLoader(access, query),
+    model,
+    codingRuntime: createCodingRuntimePort({ access: input.access, model }),
   });
   return runAnswerPipeline(deps, {
     request: {

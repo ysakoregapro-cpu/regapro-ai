@@ -15,7 +15,13 @@ import {
 const DEFAULT_GATEWAY_BASE = "https://ai-gateway.vercel.sh/v1";
 
 type ChatChoice = {
-  message?: { content?: string | null };
+  message?: {
+    content?: string | null;
+    tool_calls?: Array<{
+      id?: string;
+      function?: { name?: string; arguments?: string };
+    }>;
+  };
 };
 
 type ChatResponse = {
@@ -158,11 +164,21 @@ export class VercelGatewayModelProvider implements ModelProvider {
             timeoutMs: role === "reasoning" ? 40_000 : 30_000,
             body: {
               model: modelId,
-              messages: [
-                { role: "system", content: payload.system },
-                { role: "user", content: payload.user },
-              ],
+              messages: input.conversation?.length
+                ? [
+                    { role: "system", content: payload.system },
+                    ...input.conversation.map((m) => ({
+                      role: m.role,
+                      content: m.content,
+                      ...(m.toolCallId ? { tool_call_id: m.toolCallId } : {}),
+                    })),
+                  ]
+                : [
+                    { role: "system", content: payload.system },
+                    { role: "user", content: payload.user },
+                  ],
               temperature: role === "reasoning" ? 0.2 : 0.3,
+              ...(input.tools?.length ? { tools: input.tools, tool_choice: "auto" } : {}),
               ...(Object.keys(providerOptions).length
                 ? { providerOptions }
                 : {}),
@@ -171,7 +187,24 @@ export class VercelGatewayModelProvider implements ModelProvider {
         2,
       );
       const text = json.choices?.[0]?.message?.content?.trim() ?? "";
-      if (!text) throw new Error("GATEWAY_EMPTY_COMPLETION");
+      const toolCalls = (json.choices?.[0]?.message?.tool_calls ?? [])
+        .map((c) => {
+          let args: Record<string, unknown> = {};
+          try {
+            args = c.function?.arguments
+              ? (JSON.parse(c.function.arguments) as Record<string, unknown>)
+              : {};
+          } catch {
+            args = {};
+          }
+          return {
+            id: c.id ?? "tool",
+            name: c.function?.name ?? "",
+            arguments: args,
+          };
+        })
+        .filter((c) => c.name);
+      if (!text && toolCalls.length === 0) throw new Error("GATEWAY_EMPTY_COMPLETION");
       const usage = {
         promptTokens: json.usage?.prompt_tokens ?? 0,
         completionTokens: json.usage?.completion_tokens ?? 0,
@@ -201,6 +234,7 @@ export class VercelGatewayModelProvider implements ModelProvider {
         fallbackCount: 0,
         usage,
         estimatedCostUsd: cost.usd,
+        toolCalls: toolCalls.length ? toolCalls : undefined,
       };
     } catch (err) {
       health.recordFailure();

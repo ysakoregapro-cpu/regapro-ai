@@ -59,6 +59,7 @@ import { HonestFallbackModelProvider } from "./model/honest-fallback.js";
 import { createAnswerRuntimeLogger } from "./observability.js";
 import type {
   AnswerPipelineDeps,
+  CodingRuntimePort,
   InternalKnowledgeRetriever,
   ModelProvider,
   ResearchRetriever,
@@ -81,6 +82,7 @@ export function createDefaultAnswerPipelineDeps(input?: {
   web?: WebRetriever;
   research?: ResearchRetriever;
   model?: ModelProvider;
+  codingRuntime?: CodingRuntimePort;
   onTrace?: AnswerPipelineDeps["onTrace"];
 }): AnswerPipelineDeps {
   const logger = createAnswerRuntimeLogger();
@@ -108,6 +110,7 @@ export function createDefaultAnswerPipelineDeps(input?: {
     contextBuilder: new DefaultContextBuilder(),
     model: input?.model ?? new HonestFallbackModelProvider(),
     answerComposer: new DefaultAnswerComposer(),
+    codingRuntime: input?.codingRuntime,
     onTrace: input?.onTrace ?? ((t) => logger.emit(t)),
   };
 }

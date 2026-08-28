@@ -17,6 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@regapro/coding-runtime": "*",
     "@regapro/knowledge": "*",
     "@regapro/security": "*",
     "@regapro/shared": "*",
