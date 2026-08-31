@@ -1,8 +1,13 @@
 import type {
   ConfidentialityLevel,
   DepartmentKey,
+  EmploymentType,
   Permission,
+  PermissionGrant,
+  PermissionScope,
   Role,
+  StaffRef,
+  StaffStatus,
   Visibility,
 } from "@regapro/shared";
 import {
@@ -13,6 +18,7 @@ import {
   minConfidentiality,
   resolveEffectiveClearance,
   inheritSecurityLabel,
+  scopesEqual,
   type SecurityLabel,
 } from "@regapro/shared";
 
@@ -83,13 +89,45 @@ export function canAccessByVisibility(ctx: VisibilityContext): boolean {
   }
 }
 
-export interface AccessContext {
+/**
+ * Staff facts attached to an access context.
+ *
+ * Present only once the caller's `auth.users.id` has been mapped to a
+ * `staff.staff_id` through `staff_identities`. Until backfill completes these
+ * stay empty and callers run in *compatibility mode* — see
+ * `docs/architecture/staff-identity.md`.
+ */
+export interface StaffAccessFields {
+  /** Login identity. Mirrors `userId`; kept explicit so the two never blur. */
+  authUserId: string;
+  /** Canonical person identity. `null` until the caller is linked to staff. */
+  staffId: string | null;
+  staffNo: string | null;
+  /** Contractual relationship only — never a permission input. */
+  employmentType: EmploymentType | null;
+  staffStatus: StaffStatus | null;
+  /** All departments the staff belongs to (`departmentId` stays the primary one). */
+  departmentIds: string[];
+  /** Platform role ids from `staff_role_assignments`. */
+  roleIds: string[];
+  /** Feature Permission axis. Distinct from `permissionKeys`. */
+  permissions: PermissionGrant[];
+  /** Distinct scopes the caller holds any grant in. */
+  scopes: PermissionScope[];
+}
+
+export interface AccessContext extends Partial<StaffAccessFields> {
   userId: string;
   organizationId: string;
   membershipId: string;
   departmentId: string | null;
   departmentKey: DepartmentKey;
   roleKeys: Role[];
+  /**
+   * Legacy AI-runtime capability keys (colon notation, e.g. `chat:use`).
+   * Governs the existing AI surfaces. NOT the integrated-app feature axis —
+   * use `permissions` for that.
+   */
   permissionKeys: Permission[];
   maximumConfidentialityLevel: ConfidentialityLevel;
   threadConfidentialityLevel: ConfidentialityLevel;
@@ -98,6 +136,35 @@ export interface AccessContext {
   participantThreadIds: string[];
   auditMode: boolean;
   auditCaseId: string | null;
+}
+
+/** Normalises the optional staff fields so callers never branch on `undefined`. */
+export function staffFieldsOf(ctx: AccessContext): StaffAccessFields {
+  return {
+    authUserId: ctx.authUserId ?? ctx.userId,
+    staffId: ctx.staffId ?? null,
+    staffNo: ctx.staffNo ?? null,
+    employmentType: ctx.employmentType ?? null,
+    staffStatus: ctx.staffStatus ?? null,
+    departmentIds:
+      ctx.departmentIds ?? (ctx.departmentId ? [ctx.departmentId] : []),
+    roleIds: ctx.roleIds ?? [],
+    permissions: ctx.permissions ?? [],
+    scopes: ctx.scopes ?? [],
+  };
+}
+
+/** True while the caller has no linked staff record and legacy fallbacks apply. */
+export function isStaffCompatibilityMode(ctx: AccessContext): boolean {
+  return (ctx.staffId ?? null) === null;
+}
+
+export function distinctScopes(grants: PermissionGrant[]): PermissionScope[] {
+  const out: PermissionScope[] = [];
+  for (const grant of grants) {
+    if (!out.some((s) => scopesEqual(s, grant.scope))) out.push(grant.scope);
+  }
+  return out;
 }
 
 export function effectiveSearchCeiling(ctx: AccessContext): ConfidentialityLevel {
@@ -122,13 +189,30 @@ export function buildAccessContext(input: {
   auditMode?: boolean;
   auditCaseId?: string | null;
   extraPermissions?: Permission[];
+  /** Optional. Omit during Phase 1–2 to keep the legacy behaviour unchanged. */
+  staff?: StaffRef | null;
+  authUserId?: string;
+  departmentIds?: string[];
+  roleIds?: string[];
+  permissions?: PermissionGrant[];
 }): AccessContext {
   const permissionKeys = listEffectivePermissions({
     roles: input.roles,
     extraPermissions: input.extraPermissions,
   });
+  const grants = input.permissions ?? [];
   return {
     userId: input.userId,
+    authUserId: input.authUserId ?? input.userId,
+    staffId: input.staff?.staffId ?? null,
+    staffNo: input.staff?.staffNo ?? null,
+    employmentType: input.staff?.employmentType ?? null,
+    staffStatus: input.staff?.status ?? null,
+    departmentIds:
+      input.departmentIds ?? (input.departmentId ? [input.departmentId] : []),
+    roleIds: input.roleIds ?? [],
+    permissions: grants,
+    scopes: distinctScopes(grants),
     organizationId: input.organizationId,
     membershipId: input.membershipId,
     departmentId: input.departmentId,

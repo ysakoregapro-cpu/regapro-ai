@@ -23,6 +23,12 @@ import {
 } from "./lib.mjs";
 import { cleanupFixtures, setupFixtures } from "./fixtures.mjs";
 import { runAllCases } from "./cases.mjs";
+import {
+  cleanupPlatformFixtures,
+  platformTablesReady,
+  runPlatformCases,
+  setupPlatformFixtures,
+} from "./cases-platform.mjs";
 
 async function main() {
   loadEnvFiles();
@@ -37,6 +43,7 @@ async function main() {
   console.log("==========================================\n");
 
   let fx = null;
+  let platform = null;
   try {
     console.log("Setting up fixtures (service_role / admin auth)...");
     fx = await setupFixtures({ ...env, runId });
@@ -45,6 +52,20 @@ async function main() {
     );
 
     await runAllCases(reporter, fx);
+
+    // Integrated app foundation cases only apply once the additive Phase 1
+    // migrations are on the target project.
+    const readiness = await platformTablesReady(fx.admin);
+    if (readiness.ready) {
+      console.log("\nSetting up integrated app foundation fixtures...");
+      platform = await setupPlatformFixtures(fx);
+      await runPlatformCases(reporter, fx, platform);
+    } else {
+      reporter.skip(
+        "integrated app foundation cases",
+        `table ${readiness.missing} not present — apply supabase/migrations/2026082812*.sql first`,
+      );
+    }
   } catch (err) {
     console.error("\nHarness error:", err?.message ?? err);
     reporter.fail("harness", String(err?.message ?? err));
@@ -52,6 +73,7 @@ async function main() {
     if (fx && !keep) {
       console.log("\nCleaning fixture data...");
       try {
+        await cleanupPlatformFixtures(fx, platform);
         await cleanupFixtures(fx);
         reporter.pass("cleanup fixture users/rows", "completed");
       } catch (err) {

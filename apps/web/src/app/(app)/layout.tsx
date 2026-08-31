@@ -1,7 +1,12 @@
 import { AppShell } from "@/components/shell/AppShell";
 import { isDevSampleMode } from "@/lib/supabase/env";
+import { resolveShellNavigation } from "@/lib/platform/navigation";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   let showDemoBadge = false;
   try {
     showDemoBadge = isDevSampleMode();
@@ -9,5 +14,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     showDemoBadge = false;
   }
 
-  return <AppShell showDemoBadge={showDemoBadge}>{children}</AppShell>;
+  const navigation = await resolveShellNavigation();
+
+  return (
+    <AppShell showDemoBadge={showDemoBadge} navigation={navigation}>
+      {children}
+    </AppShell>
+  );
 }

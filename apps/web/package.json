@@ -22,6 +22,7 @@
     "@regapro/local-ai": "*",
     "@regapro/notifications": "*",
     "@regapro/observability": "*",
+    "@regapro/platform": "*",
     "@regapro/prompting": "*",
     "@regapro/research": "*",
     "@regapro/security": "*",

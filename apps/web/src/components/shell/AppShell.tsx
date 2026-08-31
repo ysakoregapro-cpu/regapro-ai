@@ -1,18 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { NavigationItem } from "@regapro/platform";
 import { DesktopSidebar } from "./DesktopSidebar";
 import { MobileBottomNavigation } from "./MobileBottomNavigation";
 import { CommandPalette, TopBar } from "./TopBar";
+
+export type ShellNavigationProps = {
+  primary: NavigationItem[];
+  work: NavigationItem[];
+  personal: NavigationItem[];
+  advanced: NavigationItem[];
+  mobile: NavigationItem[];
+};
 
 export function AppShell({
   children,
   showDemoBadge,
   title,
+  navigation,
 }: {
   children: React.ReactNode;
   showDemoBadge: boolean;
   title?: string;
+  navigation: ShellNavigationProps;
 }) {
   const [commandOpen, setCommandOpen] = useState(false);
 
@@ -29,7 +40,13 @@ export function AppShell({
 
   return (
     <div className="flex h-dvh overflow-hidden bg-bg text-text">
-      <DesktopSidebar showDemoBadge={showDemoBadge} />
+      <DesktopSidebar
+        showDemoBadge={showDemoBadge}
+        primary={navigation.primary}
+        work={navigation.work}
+        personal={navigation.personal}
+        advanced={navigation.advanced}
+      />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar title={title} onOpenCommand={() => setCommandOpen(true)} />
         <main
@@ -41,7 +58,7 @@ export function AppShell({
         >
           <div className="mx-auto w-full max-w-[1120px]">{children}</div>
         </main>
-        <MobileBottomNavigation />
+        <MobileBottomNavigation items={navigation.mobile} />
       </div>
       <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
     </div>

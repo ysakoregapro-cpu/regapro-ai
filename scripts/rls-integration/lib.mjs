@@ -105,6 +105,12 @@ export class RlsReporter {
     console.error(`FAIL  ${name}${detail ? ` — ${detail}` : ""}`);
   }
 
+  /** Not applicable in this environment — e.g. a migration not yet applied. */
+  skip(name, detail = "") {
+    this.results.push({ name, status: "SKIP", detail });
+    console.log(`SKIP  ${name}${detail ? ` — ${detail}` : ""}`);
+  }
+
   /**
    * Positive: expect row(s) visible.
    * @param {{ data: unknown[] | null, error: { message?: string } | null }} result
@@ -183,10 +189,12 @@ export class RlsReporter {
   summary() {
     const pass = this.results.filter((r) => r.status === "PASS").length;
     const fail = this.results.filter((r) => r.status === "FAIL").length;
+    const skip = this.results.filter((r) => r.status === "SKIP").length;
     console.log("\n========== RLS INTEGRATION SUMMARY ==========");
     console.log(`PASS: ${pass}`);
     console.log(`FAIL: ${fail}`);
+    if (skip > 0) console.log(`SKIP: ${skip}`);
     console.log(`TOTAL: ${this.results.length}`);
-    return { pass, fail, total: this.results.length };
+    return { pass, fail, skip, total: this.results.length };
   }
 }

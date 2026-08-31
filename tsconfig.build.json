@@ -4,6 +4,7 @@
     { "path": "./packages/shared" },
     { "path": "./packages/database" },
     { "path": "./packages/security" },
+    { "path": "./packages/platform" },
     { "path": "./packages/knowledge" },
     { "path": "./packages/research" },
     { "path": "./packages/tasks" },

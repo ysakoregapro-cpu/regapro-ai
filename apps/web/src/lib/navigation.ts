@@ -1,17 +1,28 @@
-export const NAV_PRIMARY = [
-  { href: "/home", label: "ホーム", id: "home" },
-  { href: "/assistant", label: "アシスタント", id: "assistant" },
-  { href: "/tasks", label: "タスク", id: "tasks" },
-  { href: "/search", label: "検索", id: "search" },
-  { href: "/workspace", label: "ワークスペース", id: "workspace" },
-] as const;
+import { MODULE_REGISTRY } from "@regapro/platform";
 
-export const NAV_MOBILE = [
-  { href: "/home", label: "ホーム", id: "home" },
-  { href: "/assistant", label: "アシスタント", id: "assistant" },
-  { href: "/tasks", label: "タスク", id: "tasks" },
-  { href: "/search", label: "検索", id: "search" },
-] as const;
+/**
+ * Shell navigation is generated from the Module Registry, not hand-maintained.
+ * These arrays are the *unauthenticated fallback* used before a session is
+ * resolved; the real, permission-filtered navigation is passed down from
+ * `(app)/layout.tsx`.
+ */
+export type NavItem = { href: string; label: string; id: string };
+
+function fallbackNav(surface: "desktop" | "mobile"): NavItem[] {
+  return MODULE_REGISTRY.filter(
+    (m) =>
+      m.featureState === "available" &&
+      m.legacyFallbackVisible &&
+      m.navigationGroup === "primary" &&
+      (surface === "desktop" || m.mobileVisibility),
+  )
+    .sort((a, b) => a.order - b.order)
+    .map((m) => ({ href: m.primaryRoute, label: m.label, id: m.iconRef }));
+}
+
+export const NAV_PRIMARY: readonly NavItem[] = fallbackNav("desktop");
+
+export const NAV_MOBILE: readonly NavItem[] = fallbackNav("mobile");
 
 export const WORKSPACE_NAV = [
   { href: "/workspace/knowledge", label: "ナレッジ" },

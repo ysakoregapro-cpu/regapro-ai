@@ -2,19 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, MessageSquare, CheckSquare, Search } from "lucide-react";
-import { NAV_MOBILE } from "@/lib/navigation";
+import type { NavigationItem } from "@regapro/platform";
 import { cn } from "@/lib/cn";
+import { FALLBACK_NAV_ICON, NAV_ICONS } from "./nav-icons";
 
-const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  home: Home,
-  assistant: MessageSquare,
-  tasks: CheckSquare,
-  search: Search,
-};
+/**
+ * Mobile is its own work context, not a stacked desktop sidebar: only modules
+ * flagged `mobileVisibility` in the registry appear, capped so touch targets
+ * stay comfortable.
+ */
+const MAX_MOBILE_ITEMS = 5;
 
-export function MobileBottomNavigation() {
+export function MobileBottomNavigation({ items }: { items: NavigationItem[] }) {
   const pathname = usePathname();
+  const visible = items.slice(0, MAX_MOBILE_ITEMS);
+
+  if (visible.length === 0) return null;
 
   return (
     <nav
@@ -22,14 +25,19 @@ export function MobileBottomNavigation() {
       aria-label="モバイルナビゲーション"
       style={{ height: "calc(var(--mobile-nav-height) + env(safe-area-inset-bottom))" }}
     >
-      <ul className="grid h-[56px] grid-cols-4">
-        {NAV_MOBILE.map((item) => {
-          const Icon = ICONS[item.id] ?? Home;
+      <ul
+        className="grid h-[56px]"
+        style={{
+          gridTemplateColumns: `repeat(${visible.length}, minmax(0, 1fr))`,
+        }}
+      >
+        {visible.map((item) => {
+          const Icon = NAV_ICONS[item.iconRef] ?? FALLBACK_NAV_ICON;
           const active =
             pathname === item.href ||
             (item.href !== "/home" && pathname.startsWith(item.href));
           return (
-            <li key={item.id}>
+            <li key={item.moduleId}>
               <Link
                 href={item.href}
                 className={cn(
