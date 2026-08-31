@@ -3803,6 +3803,32 @@ export type Database = {
           },
         ]
       }
+      staff_no_counters: {
+        Row: {
+          last_value: number
+          org_id: string
+          updated_at: string
+        }
+        Insert: {
+          last_value?: number
+          org_id: string
+          updated_at?: string
+        }
+        Update: {
+          last_value?: number
+          org_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_no_counters_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff_permission_overrides: {
         Row: {
           created_at: string
@@ -4225,6 +4251,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      regapro_backfill_staff_from_auth: {
+        Args: {
+          p_actor_auth_user_id?: string
+          p_auth_user_id: string
+          p_employment_type: string
+        }
+        Returns: Json
+      }
       regapro_can_access_confidentiality_level: {
         Args: { p_org_id: string; p_resource_level: number }
         Returns: boolean
@@ -4365,9 +4399,17 @@ export type Database = {
       }
       regapro_current_staff_id: { Args: never; Returns: string }
       regapro_current_user_id: { Args: never; Returns: string }
+      regapro_derive_platform_roles_from_ai_permissions: {
+        Args: { p_ai_permission_keys: string[] }
+        Returns: string[]
+      }
       regapro_effective_clearance_level: {
         Args: { p_org_id: string }
         Returns: number
+      }
+      regapro_expected_platform_permissions_from_ai: {
+        Args: { p_ai_permission_keys: string[] }
+        Returns: string[]
       }
       regapro_has_conversation_audit_access: {
         Args: { p_org_id: string }
@@ -4435,6 +4477,11 @@ export type Database = {
         }[]
       }
       regapro_level_to_int: { Args: { p_level: string }; Returns: number }
+      regapro_membership_ai_permissions: {
+        Args: { p_org_id: string; p_user_id: string }
+        Returns: string[]
+      }
+      regapro_next_staff_no: { Args: { p_org_id: string }; Returns: string }
       regapro_staff_belongs_to_org: {
         Args: { p_org_id: string }
         Returns: boolean
@@ -4442,6 +4489,10 @@ export type Database = {
       regapro_staff_has_permission: {
         Args: { p_org_id: string; p_permission: string }
         Returns: boolean
+      }
+      regapro_staff_platform_permissions: {
+        Args: { p_org_id: string; p_staff_id: string }
+        Returns: string[]
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
