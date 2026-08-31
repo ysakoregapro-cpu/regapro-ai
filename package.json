@@ -19,6 +19,7 @@
     "db:gen-types": "node scripts/gen-supabase-types.mjs",
     "db:bootstrap-org": "node scripts/bootstrap-regapro-org.mjs",
     "db:verify-live": "node scripts/verify-live-connection.mjs",
+    "db:backfill-staff": "node scripts/backfill-staff-identities.mjs",
     "db:test-rls": "node scripts/rls-integration/run.mjs",
     "smoke:supabase-mode": "node scripts/smoke-supabase-mode.mjs",
     "smoke:cloud-runtime": "node --env-file=apps/web/.env.local scripts/smoke-cloud-runtime.mjs",

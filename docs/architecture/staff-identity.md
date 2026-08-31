@@ -39,6 +39,24 @@ staff.staff_id        人の正準識別子 (Person Identity)
 
 退職は削除ではなく `status = 'left'` への遷移で表す。行を物理削除しないことが再利用防止の担保になっている。
 
+### staff_no 採番ルール / Numbering policy
+
+正式形式: **`RP-000001`**, **`RP-000002`**, …（組織内で連番）
+
+| 要件 | 内容 |
+|---|---|
+| スコープ | 組織単位（`org_id` ごとに独立カウンタ） |
+| 不変 | 一度割り当てた番号は変更しない |
+| 再利用禁止 | 退職（`status = 'left'`）後も番号は保持 |
+| 意味を含まない | 雇用形態・部署・ロール等の情報は含めない |
+| FK 用途 | **禁止** — ドメイン FK は `staff_id` (uuid) のみ |
+| 同時実行 | `staff_no_counters` + `regapro_next_staff_no()` で DB 側 atomic 採番 |
+| 旧社員番号 | 必要なら `staff_identities.metadata` で別管理（`staff_no` には流用しない） |
+
+マイグレーション: `supabase/migrations/20260831120000_staff_no_sequence.sql`
+
+Admin UI からの新規 Staff 作成時も同関数で採番する。手入力・推測・ランダム UUID による偽番号は禁止。
+
 ### employment_type は権限ではない
 
 `employment_type` は契約形態のみを表す。権限判定関数（TypeScript の `hasPermission()`、SQL の `regapro_staff_has_permission()`）のどちらにも登場しない。
@@ -46,6 +64,8 @@ staff.staff_id        人の正準識別子 (Person Identity)
 `packages/platform/src/rbac.test.ts` の "employment type is not a permission input" と、RLS 側の "executive employment_type alone DENIED …" がこれを検証する。
 
 employment_type を増やす場合は `EMPLOYMENT_TYPES`（`packages/shared/src/staff.ts`）と `staff.employment_type` の CHECK 制約の両方を更新する。
+
+**Backfill / Admin UI 作成時は明示入力必須。** Role や Department からの推論禁止。不明な場合は apply を拒否する（`requires_review` への silent fallback 禁止）。
 
 ## staff_identities
 
