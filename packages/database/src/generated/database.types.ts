@@ -15,7 +15,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.5"
   }
   graphql_public: {
     Tables: {
@@ -468,6 +468,390 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "citations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coding_approvals: {
+        Row: {
+          created_at: string
+          decided_at: string | null
+          fingerprint: string
+          id: string
+          org_id: string
+          run_id: string
+          status: string
+          summary: string
+          tool_name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          decided_at?: string | null
+          fingerprint: string
+          id?: string
+          org_id: string
+          run_id: string
+          status?: string
+          summary: string
+          tool_name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          decided_at?: string | null
+          fingerprint?: string
+          id?: string
+          org_id?: string
+          run_id?: string
+          status?: string
+          summary?: string
+          tool_name?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coding_approvals_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coding_approvals_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "coding_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coding_audit_events: {
+        Row: {
+          action: string
+          actor_user_id: string | null
+          created_at: string
+          device_id: string | null
+          id: string
+          metadata: Json
+          org_id: string
+        }
+        Insert: {
+          action: string
+          actor_user_id?: string | null
+          created_at?: string
+          device_id?: string | null
+          id?: string
+          metadata?: Json
+          org_id: string
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string | null
+          created_at?: string
+          device_id?: string | null
+          id?: string
+          metadata?: Json
+          org_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coding_audit_events_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coding_commands: {
+        Row: {
+          claimed_at: string | null
+          created_at: string
+          device_id: string
+          finished_at: string | null
+          id: string
+          org_id: string
+          payload: Json
+          result_meta: Json | null
+          risk_level: string
+          run_id: string | null
+          status: string
+          tool_name: string
+        }
+        Insert: {
+          claimed_at?: string | null
+          created_at?: string
+          device_id: string
+          finished_at?: string | null
+          id?: string
+          org_id: string
+          payload?: Json
+          result_meta?: Json | null
+          risk_level: string
+          run_id?: string | null
+          status?: string
+          tool_name: string
+        }
+        Update: {
+          claimed_at?: string | null
+          created_at?: string
+          device_id?: string
+          finished_at?: string | null
+          id?: string
+          org_id?: string
+          payload?: Json
+          result_meta?: Json | null
+          risk_level?: string
+          run_id?: string | null
+          status?: string
+          tool_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coding_commands_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "coding_devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coding_commands_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coding_commands_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "coding_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coding_devices: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          last_seen_at: string | null
+          org_id: string
+          os: string
+          public_key_pem: string
+          revoked_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label: string
+          last_seen_at?: string | null
+          org_id: string
+          os?: string
+          public_key_pem: string
+          revoked_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          last_seen_at?: string | null
+          org_id?: string
+          os?: string
+          public_key_pem?: string
+          revoked_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coding_devices_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coding_pairing_challenges: {
+        Row: {
+          code_hash: string
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          org_id: string
+          user_id: string
+        }
+        Insert: {
+          code_hash: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          id?: string
+          org_id: string
+          user_id: string
+        }
+        Update: {
+          code_hash?: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          org_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coding_pairing_challenges_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coding_runs: {
+        Row: {
+          changed_files: string[]
+          created_at: string
+          device_id: string | null
+          finished_at: string | null
+          goal: string
+          id: string
+          mode: string
+          org_id: string
+          plan: Json
+          started_at: string
+          status: string
+          thread_id: string | null
+          tool_names: string[]
+          user_id: string
+          verification: Json | null
+          workspace_id: string | null
+        }
+        Insert: {
+          changed_files?: string[]
+          created_at?: string
+          device_id?: string | null
+          finished_at?: string | null
+          goal: string
+          id?: string
+          mode: string
+          org_id: string
+          plan?: Json
+          started_at?: string
+          status: string
+          thread_id?: string | null
+          tool_names?: string[]
+          user_id: string
+          verification?: Json | null
+          workspace_id?: string | null
+        }
+        Update: {
+          changed_files?: string[]
+          created_at?: string
+          device_id?: string | null
+          finished_at?: string | null
+          goal?: string
+          id?: string
+          mode?: string
+          org_id?: string
+          plan?: Json
+          started_at?: string
+          status?: string
+          thread_id?: string | null
+          tool_names?: string[]
+          user_id?: string
+          verification?: Json | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coding_runs_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "coding_devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coding_runs_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coding_runs_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "chat_threads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coding_runs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "coding_workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coding_workspaces: {
+        Row: {
+          created_at: string
+          device_id: string
+          id: string
+          label: string
+          org_id: string
+          permission: string
+          revoked_at: string | null
+          root_path: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          device_id: string
+          id?: string
+          label: string
+          org_id: string
+          permission?: string
+          revoked_at?: string | null
+          root_path: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          device_id?: string
+          id?: string
+          label?: string
+          org_id?: string
+          permission?: string
+          revoked_at?: string | null
+          root_path?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coding_workspaces_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "coding_devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coding_workspaces_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -2176,6 +2560,222 @@ export type Database = {
           },
         ]
       }
+      migration_errors: {
+        Row: {
+          batch_id: string
+          context: Json
+          created_at: string
+          error_code: string
+          id: string
+          message: string
+          source_record_id: string | null
+        }
+        Insert: {
+          batch_id: string
+          context?: Json
+          created_at?: string
+          error_code: string
+          id?: string
+          message: string
+          source_record_id?: string | null
+        }
+        Update: {
+          batch_id?: string
+          context?: Json
+          created_at?: string
+          error_code?: string
+          id?: string
+          message?: string
+          source_record_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "migration_errors_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "migration_import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "migration_errors_source_record_id_fkey"
+            columns: ["source_record_id"]
+            isOneToOne: false
+            referencedRelation: "migration_source_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      migration_identity_matches: {
+        Row: {
+          batch_id: string
+          confidence: number | null
+          confirmed_at: string | null
+          confirmed_by_staff_id: string | null
+          created_at: string
+          external_user_id: string
+          id: string
+          match_method: string
+          source_system: string
+          staff_id: string | null
+          status: string
+        }
+        Insert: {
+          batch_id: string
+          confidence?: number | null
+          confirmed_at?: string | null
+          confirmed_by_staff_id?: string | null
+          created_at?: string
+          external_user_id: string
+          id?: string
+          match_method: string
+          source_system: string
+          staff_id?: string | null
+          status?: string
+        }
+        Update: {
+          batch_id?: string
+          confidence?: number | null
+          confirmed_at?: string | null
+          confirmed_by_staff_id?: string | null
+          created_at?: string
+          external_user_id?: string
+          id?: string
+          match_method?: string
+          source_system?: string
+          staff_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "migration_identity_matches_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "migration_import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "migration_identity_matches_confirmed_by_staff_id_fkey"
+            columns: ["confirmed_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "migration_identity_matches_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+        ]
+      }
+      migration_import_batches: {
+        Row: {
+          applied_at: string | null
+          created_at: string
+          created_by_staff_id: string | null
+          dry_run: boolean
+          entity_kind: string
+          failed_records: number
+          id: string
+          label: string
+          matched_records: number
+          notes: string | null
+          org_id: string
+          source_system: string
+          status: string
+          total_records: number
+        }
+        Insert: {
+          applied_at?: string | null
+          created_at?: string
+          created_by_staff_id?: string | null
+          dry_run?: boolean
+          entity_kind: string
+          failed_records?: number
+          id?: string
+          label: string
+          matched_records?: number
+          notes?: string | null
+          org_id: string
+          source_system: string
+          status?: string
+          total_records?: number
+        }
+        Update: {
+          applied_at?: string | null
+          created_at?: string
+          created_by_staff_id?: string | null
+          dry_run?: boolean
+          entity_kind?: string
+          failed_records?: number
+          id?: string
+          label?: string
+          matched_records?: number
+          notes?: string | null
+          org_id?: string
+          source_system?: string
+          status?: string
+          total_records?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "migration_import_batches_created_by_staff_id_fkey"
+            columns: ["created_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "migration_import_batches_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      migration_source_records: {
+        Row: {
+          batch_id: string
+          content_hash: string
+          created_at: string
+          external_record_id: string
+          external_user_id: string | null
+          id: string
+          payload: Json
+          status: string
+        }
+        Insert: {
+          batch_id: string
+          content_hash: string
+          created_at?: string
+          external_record_id: string
+          external_user_id?: string | null
+          id?: string
+          payload: Json
+          status?: string
+        }
+        Update: {
+          batch_id?: string
+          content_hash?: string
+          created_at?: string
+          external_record_id?: string
+          external_user_id?: string | null
+          id?: string
+          payload?: Json
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "migration_source_records_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "migration_import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_deliveries: {
         Row: {
           attempts: number
@@ -2439,6 +3039,64 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      permission_audit_events: {
+        Row: {
+          action: string
+          actor_auth_user_id: string | null
+          actor_staff_id: string | null
+          after: Json | null
+          before: Json | null
+          created_at: string
+          id: string
+          org_id: string
+          subject_staff_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_auth_user_id?: string | null
+          actor_staff_id?: string | null
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          id?: string
+          org_id: string
+          subject_staff_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_auth_user_id?: string | null
+          actor_staff_id?: string | null
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          id?: string
+          org_id?: string
+          subject_staff_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permission_audit_events_actor_staff_id_fkey"
+            columns: ["actor_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "permission_audit_events_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permission_audit_events_subject_staff_id_fkey"
+            columns: ["subject_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+        ]
       }
       permissions: {
         Row: {
@@ -3009,6 +3667,293 @@ export type Database = {
           },
         ]
       }
+      staff: {
+        Row: {
+          created_at: string
+          employment_type: string
+          joined_at: string | null
+          left_at: string | null
+          name: string
+          org_id: string
+          staff_id: string
+          staff_no: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          employment_type: string
+          joined_at?: string | null
+          left_at?: string | null
+          name: string
+          org_id: string
+          staff_id?: string
+          staff_no: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          employment_type?: string
+          joined_at?: string | null
+          left_at?: string | null
+          name?: string
+          org_id?: string
+          staff_id?: string
+          staff_no?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_departments: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          department_id: string
+          id: string
+          is_primary: boolean
+          job_title: string | null
+          staff_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          department_id: string
+          id?: string
+          is_primary?: boolean
+          job_title?: string | null
+          staff_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          department_id?: string
+          id?: string
+          is_primary?: boolean
+          job_title?: string | null
+          staff_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_departments_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_departments_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+        ]
+      }
+      staff_identities: {
+        Row: {
+          auth_user_id: string | null
+          created_at: string
+          external_user_id: string
+          id: string
+          identity_type: string
+          metadata: Json
+          source_system: string
+          staff_id: string
+        }
+        Insert: {
+          auth_user_id?: string | null
+          created_at?: string
+          external_user_id: string
+          id?: string
+          identity_type: string
+          metadata?: Json
+          source_system: string
+          staff_id: string
+        }
+        Update: {
+          auth_user_id?: string | null
+          created_at?: string
+          external_user_id?: string
+          id?: string
+          identity_type?: string
+          metadata?: Json
+          source_system?: string
+          staff_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_identities_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+        ]
+      }
+      staff_permission_overrides: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          effect: string
+          expires_at: string | null
+          granted_by_staff_id: string | null
+          id: string
+          org_id: string
+          permission_id: string
+          reason: string | null
+          scope_id: string | null
+          scope_type: string
+          staff_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          effect: string
+          expires_at?: string | null
+          granted_by_staff_id?: string | null
+          id?: string
+          org_id: string
+          permission_id: string
+          reason?: string | null
+          scope_id?: string | null
+          scope_type?: string
+          staff_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          effect?: string
+          expires_at?: string | null
+          granted_by_staff_id?: string | null
+          id?: string
+          org_id?: string
+          permission_id?: string
+          reason?: string | null
+          scope_id?: string | null
+          scope_type?: string
+          staff_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_permission_overrides_granted_by_staff_id_fkey"
+            columns: ["granted_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "staff_permission_overrides_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_permission_overrides_permission_id_fkey"
+            columns: ["permission_id"]
+            isOneToOne: false
+            referencedRelation: "permissions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_permission_overrides_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+        ]
+      }
+      staff_role_assignments: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          expires_at: string | null
+          granted_at: string
+          granted_by_staff_id: string | null
+          id: string
+          org_id: string
+          role_id: string
+          scope_id: string | null
+          scope_type: string
+          staff_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          expires_at?: string | null
+          granted_at?: string
+          granted_by_staff_id?: string | null
+          id?: string
+          org_id: string
+          role_id: string
+          scope_id?: string | null
+          scope_type?: string
+          staff_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          expires_at?: string | null
+          granted_at?: string
+          granted_by_staff_id?: string | null
+          id?: string
+          org_id?: string
+          role_id?: string
+          scope_id?: string | null
+          scope_type?: string
+          staff_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_role_assignments_granted_by_staff_id_fkey"
+            columns: ["granted_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "staff_role_assignments_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_role_assignments_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "roles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_role_assignments_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+        ]
+      }
       task_events: {
         Row: {
           actor_id: string | null
@@ -3337,6 +4282,9 @@ export type Database = {
         }
         Returns: boolean
       }
+      regapro_can_manage_roles: { Args: { p_org_id: string }; Returns: boolean }
+      regapro_can_manage_staff: { Args: { p_org_id: string }; Returns: boolean }
+      regapro_can_read_org: { Args: { p_org_id: string }; Returns: boolean }
       regapro_can_read_private_thread: {
         Args: { p_thread_id: string }
         Returns: boolean
@@ -3415,6 +4363,7 @@ export type Database = {
         Args: { p_org_id: string }
         Returns: string
       }
+      regapro_current_staff_id: { Args: never; Returns: string }
       regapro_current_user_id: { Args: never; Returns: string }
       regapro_effective_clearance_level: {
         Args: { p_org_id: string }
@@ -3486,6 +4435,14 @@ export type Database = {
         }[]
       }
       regapro_level_to_int: { Args: { p_level: string }; Returns: number }
+      regapro_staff_belongs_to_org: {
+        Args: { p_org_id: string }
+        Returns: boolean
+      }
+      regapro_staff_has_permission: {
+        Args: { p_org_id: string; p_permission: string }
+        Returns: boolean
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
     }
@@ -3511,6 +4468,7 @@ export type Database = {
           public: boolean | null
           type: Database["storage"]["Enums"]["buckettype"]
           updated_at: string | null
+          versioning_status: string
         }
         Insert: {
           allowed_mime_types?: string[] | null
@@ -3524,6 +4482,7 @@ export type Database = {
           public?: boolean | null
           type?: Database["storage"]["Enums"]["buckettype"]
           updated_at?: string | null
+          versioning_status?: string
         }
         Update: {
           allowed_mime_types?: string[] | null
@@ -3537,6 +4496,7 @@ export type Database = {
           public?: boolean | null
           type?: Database["storage"]["Enums"]["buckettype"]
           updated_at?: string | null
+          versioning_status?: string
         }
         Relationships: []
       }
@@ -3614,9 +4574,12 @@ export type Database = {
       }
       objects: {
         Row: {
+          archived_at: string | null
           bucket_id: string | null
           created_at: string | null
           id: string
+          is_delete_marker: boolean
+          is_versioned: boolean
           last_accessed_at: string | null
           metadata: Json | null
           name: string | null
@@ -3628,9 +4591,12 @@ export type Database = {
           version: string | null
         }
         Insert: {
+          archived_at?: string | null
           bucket_id?: string | null
           created_at?: string | null
           id?: string
+          is_delete_marker?: boolean
+          is_versioned?: boolean
           last_accessed_at?: string | null
           metadata?: Json | null
           name?: string | null
@@ -3642,9 +4608,12 @@ export type Database = {
           version?: string | null
         }
         Update: {
+          archived_at?: string | null
           bucket_id?: string | null
           created_at?: string | null
           id?: string
+          is_delete_marker?: boolean
+          is_versioned?: boolean
           last_accessed_at?: string | null
           metadata?: Json | null
           name?: string | null
