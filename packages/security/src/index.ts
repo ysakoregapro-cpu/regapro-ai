@@ -119,9 +119,17 @@ export interface StaffAccessFields {
 export interface AccessContext extends Partial<StaffAccessFields> {
   userId: string;
   organizationId: string;
-  membershipId: string;
+  /**
+   * AI organization membership id. `null` on the staff-only path —
+   * never a synthetic membership row.
+   */
+  membershipId: string | null;
   departmentId: string | null;
-  departmentKey: DepartmentKey;
+  /**
+   * Membership department key. `null` on the staff-only path so we never
+   * invent a department or raise Knowledge Clearance from a fake key.
+   */
+  departmentKey: DepartmentKey | null;
   roleKeys: Role[];
   /**
    * Legacy AI-runtime capability keys (colon notation, e.g. `chat:use`).
@@ -159,6 +167,11 @@ export function isStaffCompatibilityMode(ctx: AccessContext): boolean {
   return (ctx.staffId ?? null) === null;
 }
 
+/** True when the session is staff-only: no organization_memberships row. */
+export function isStaffOnlySession(ctx: AccessContext): boolean {
+  return ctx.membershipId === null;
+}
+
 export function distinctScopes(grants: PermissionGrant[]): PermissionScope[] {
   const out: PermissionScope[] = [];
   for (const grant of grants) {
@@ -177,9 +190,9 @@ export function effectiveSearchCeiling(ctx: AccessContext): ConfidentialityLevel
 export function buildAccessContext(input: {
   userId: string;
   organizationId: string;
-  membershipId: string;
+  membershipId: string | null;
   departmentId: string | null;
-  departmentKey: DepartmentKey;
+  departmentKey: DepartmentKey | null;
   roles: Role[];
   clearanceOverride?: ConfidentialityLevel | null;
   threadConfidentialityLevel?: ConfidentialityLevel;
@@ -201,6 +214,17 @@ export function buildAccessContext(input: {
     extraPermissions: input.extraPermissions,
   });
   const grants = input.permissions ?? [];
+  const departmentKey = input.departmentKey;
+  // Staff-only sessions have no membership department. Clearance stays at
+  // company even if a caller tries to pass an override — overrides are a
+  // membership feature.
+  const maximumConfidentialityLevel =
+    departmentKey === null
+      ? "company"
+      : resolveEffectiveClearance({
+          departmentKey,
+          clearanceOverride: input.clearanceOverride,
+        });
   return {
     userId: input.userId,
     authUserId: input.authUserId ?? input.userId,
@@ -216,13 +240,10 @@ export function buildAccessContext(input: {
     organizationId: input.organizationId,
     membershipId: input.membershipId,
     departmentId: input.departmentId,
-    departmentKey: input.departmentKey,
+    departmentKey,
     roleKeys: input.roles,
     permissionKeys,
-    maximumConfidentialityLevel: resolveEffectiveClearance({
-      departmentKey: input.departmentKey,
-      clearanceOverride: input.clearanceOverride,
-    }),
+    maximumConfidentialityLevel,
     threadConfidentialityLevel: input.threadConfidentialityLevel ?? "company",
     threadVisibility: input.threadVisibility ?? "private",
     projectIds: input.projectIds ?? [],

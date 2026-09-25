@@ -44,25 +44,43 @@ export async function GET() {
     return NextResponse.json({
       mode: "supabase",
       user: {
-        id: access.membership.userId,
-        email: access.membership.email,
-        displayName: access.membership.displayName,
+        id: access.identity.userId,
+        email: access.identity.email,
+        displayName: access.identity.displayName,
       },
-      membership: {
-        organizationId: access.membership.organizationId,
-        organizationName: access.membership.organizationName,
-        membershipId: access.membership.membershipId,
-        departmentId: access.membership.departmentId,
-        departmentKey: access.membership.departmentKey,
-        departmentLabel: access.membership.departmentLabel,
-        roles: access.membership.roles,
-        clearanceOverride: access.membership.clearanceOverride,
-        maximumConfidentialityLevel: access.maximumConfidentialityLevel,
-        selectableLevels: selectableLevelsForClearance(
-          access.maximumConfidentialityLevel,
-        ),
-        permissions: access.permissions,
-      },
+      sessionKind: access.membership ? "legacy_membership" : "staff_only",
+      membership: access.membership
+        ? {
+            organizationId: access.membership.organizationId,
+            organizationName: access.membership.organizationName,
+            membershipId: access.membership.membershipId,
+            departmentId: access.membership.departmentId,
+            departmentKey: access.membership.departmentKey,
+            departmentLabel: access.membership.departmentLabel,
+            roles: access.membership.roles,
+            clearanceOverride: access.membership.clearanceOverride,
+            maximumConfidentialityLevel: access.maximumConfidentialityLevel,
+            selectableLevels: selectableLevelsForClearance(
+              access.maximumConfidentialityLevel,
+            ),
+            permissions: access.permissions,
+          }
+        : {
+            organizationId: access.identity.organizationId,
+            organizationName: null,
+            membershipId: null,
+            departmentId: access.access.departmentId,
+            departmentKey: null,
+            departmentLabel: null,
+            roles: [],
+            clearanceOverride: null,
+            maximumConfidentialityLevel: access.maximumConfidentialityLevel,
+            selectableLevels: selectableLevelsForClearance(
+              access.maximumConfidentialityLevel,
+            ),
+            permissions: access.permissions,
+            staffId: access.access.staffId,
+          },
     });
   } catch (err) {
     return catchToJson(err);

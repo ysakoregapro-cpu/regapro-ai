@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { hasPermission } from "@regapro/platform";
+import { buildAccessContext } from "@regapro/security";
 import {
+  isGrantUnexpired,
   isMissingRelation,
   loadGrants,
   loadStaffRecord,
@@ -108,6 +111,18 @@ describe("auth user to staff resolution", () => {
     expect((await loadStaffRecord(client, "auth-user-1")).kind).toBe("unavailable");
   });
 
+  it("still returns inactive staff so login can deny them", async () => {
+    const client = fakeClient({
+      staff_identities: { data: { staff_id: "staff-1" } },
+      staff: { data: { ...STAFF_ROW, status: "left" } },
+      staff_departments: { data: [] },
+    });
+    const result = await loadStaffRecord(client, "auth-user-1");
+    expect(result.kind).toBe("found");
+    if (result.kind !== "found") return;
+    expect(result.staff.status).toBe("left");
+  });
+
   it("rejects a staff row with an unrecognised employment type", async () => {
     const client = fakeClient({
       staff_identities: { data: { staff_id: "staff-1" } },
@@ -139,6 +154,7 @@ describe("grant loading", () => {
         role_id: "role-weekly",
         scope_type: "self",
         scope_id: null,
+        expires_at: null,
         roles: {
           id: "role-weekly",
           deleted_at: null,
@@ -153,6 +169,7 @@ describe("grant loading", () => {
         role_id: "role-deleted",
         scope_type: "organization",
         scope_id: null,
+        expires_at: null,
         roles: { id: "role-deleted", deleted_at: "2026-01-01", role_permissions: [] },
       },
     ],
@@ -206,6 +223,7 @@ describe("grant loading", () => {
             effect: "deny",
             scope_type: "organization",
             scope_id: null,
+            expires_at: null,
             permissions: { key: "weekly_pay.submit", deleted_at: null },
           },
         ],
@@ -217,5 +235,127 @@ describe("grant loading", () => {
       organizationId: "org-a",
     });
     expect(grants.filter((g) => g.effect === "deny")).toHaveLength(1);
+
+    const ctx = buildAccessContext({
+      userId: "auth-1",
+      organizationId: "org-a",
+      membershipId: null,
+      departmentId: null,
+      departmentKey: null,
+      roles: [],
+      staff: {
+        staffId: "staff-1",
+        staffNo: "S-0001",
+        name: "山田太郎",
+        employmentType: "part_time",
+        status: "active",
+      },
+      permissions: grants,
+    });
+    expect(hasPermission(ctx, "weekly_pay.submit")).toBe(false);
+  });
+
+  it("drops expired role assignments", async () => {
+    const client = fakeClient({
+      staff_role_assignments: {
+        data: [
+          {
+            role_id: "role-weekly",
+            scope_type: "self",
+            scope_id: null,
+            expires_at: "2026-01-01T00:00:00.000Z",
+            roles: {
+              id: "role-weekly",
+              deleted_at: null,
+              role_permissions: [
+                {
+                  deleted_at: null,
+                  permissions: { key: "weekly_pay.submit", deleted_at: null },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      staff_permission_overrides: { data: [] },
+    });
+
+    const { grants } = await loadGrants(
+      client,
+      { staffId: "staff-1", organizationId: "org-a" },
+      { now: new Date("2026-06-01T00:00:00.000Z") },
+    );
+    expect(grants).toEqual([]);
+  });
+
+  it("drops expired permission overrides", async () => {
+    const client = fakeClient({
+      staff_role_assignments: { data: [] },
+      staff_permission_overrides: {
+        data: [
+          {
+            effect: "deny",
+            scope_type: "organization",
+            scope_id: null,
+            expires_at: "2026-01-01T00:00:00.000Z",
+            permissions: { key: "weekly_pay.submit", deleted_at: null },
+          },
+        ],
+      },
+    });
+
+    const { grants } = await loadGrants(
+      client,
+      { staffId: "staff-1", organizationId: "org-a" },
+      { now: new Date("2026-06-01T00:00:00.000Z") },
+    );
+    expect(grants).toEqual([]);
+  });
+
+  it("keeps unexpired grants", async () => {
+    const client = fakeClient({
+      staff_role_assignments: {
+        data: [
+          {
+            role_id: "role-weekly",
+            scope_type: "self",
+            scope_id: null,
+            expires_at: "2026-12-01T00:00:00.000Z",
+            roles: {
+              id: "role-weekly",
+              deleted_at: null,
+              role_permissions: [
+                {
+                  deleted_at: null,
+                  permissions: { key: "weekly_pay.submit", deleted_at: null },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      staff_permission_overrides: { data: [] },
+    });
+
+    const { grants } = await loadGrants(
+      client,
+      { staffId: "staff-1", organizationId: "org-a" },
+      { now: new Date("2026-06-01T00:00:00.000Z") },
+    );
+    expect(grants).toHaveLength(1);
+  });
+});
+
+describe("grant expiry helper", () => {
+  const now = new Date("2026-06-01T00:00:00.000Z");
+
+  it("treats null as current", () => {
+    expect(isGrantUnexpired(null, now)).toBe(true);
+    expect(isGrantUnexpired(undefined, now)).toBe(true);
+  });
+
+  it("treats equal-or-past expiry as expired", () => {
+    expect(isGrantUnexpired("2026-06-01T00:00:00.000Z", now)).toBe(false);
+    expect(isGrantUnexpired("2026-05-01T00:00:00.000Z", now)).toBe(false);
   });
 });

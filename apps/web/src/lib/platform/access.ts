@@ -14,9 +14,9 @@ import { resolveCurrentStaff } from "./staff-resolution";
  * session without altering it: knowledge clearance, visibility, and thread
  * scoping keep coming from the AI membership exactly as before.
  *
- * Known Phase 5 gap: a staff member with no AI organization membership cannot
- * resolve a session yet, because clearance is still derived from the membership
- * department. Staff-only sessions land with the first business module.
+ * Staff-only sessions (no organization_memberships) are admitted when the
+ * login maps to an active app_auth staff identity. Knowledge Clearance on
+ * that path is an explicit company ceiling — never a synthetic department.
  */
 
 export type PlatformSession = AppSession & {

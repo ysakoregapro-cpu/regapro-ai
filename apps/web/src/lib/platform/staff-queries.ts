@@ -99,7 +99,7 @@ export type StaffLookupResult =
   | { kind: "unlinked" }
   | { kind: "unavailable" };
 
-/** Login identity -> canonical person. Only active staff resolve. */
+/** Login identity -> person. Inactive staff still resolve so admission can deny. */
 export async function loadStaffRecord(
   supabase: PlatformQueryClient,
   authUserId: string,
@@ -165,6 +165,15 @@ export async function loadStaffRecord(
   };
 }
 
+/** Matches SQL `expires_at IS NULL OR expires_at > now()`. */
+export function isGrantUnexpired(
+  expiresAt: string | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!expiresAt) return true;
+  return new Date(expiresAt).getTime() > now.getTime();
+}
+
 /**
  * Role grants plus staff overrides for one organization.
  * Every query is filtered by `org_id`, so grants never cross a tenant boundary
@@ -173,11 +182,14 @@ export async function loadStaffRecord(
 export async function loadGrants(
   supabase: PlatformQueryClient,
   staff: Pick<StaffRecord, "staffId" | "organizationId">,
+  opts?: { now?: Date },
 ): Promise<{ grants: PermissionGrant[]; roleIds: string[] }> {
+  const now = opts?.now ?? new Date();
+
   const assignments = await supabase
     .from("staff_role_assignments")
     .select(
-      "role_id, scope_type, scope_id, roles ( id, deleted_at, role_permissions ( deleted_at, permissions ( key, deleted_at ) ) )",
+      "role_id, scope_type, scope_id, expires_at, roles ( id, deleted_at, role_permissions ( deleted_at, permissions ( key, deleted_at ) ) )",
     )
     .eq("staff_id", staff.staffId)
     .eq("org_id", staff.organizationId)
@@ -190,10 +202,12 @@ export async function loadGrants(
     role_id: string;
     scope_type: string;
     scope_id: string | null;
+    expires_at: string | null;
     roles: { id: string; deleted_at: string | null; role_permissions: unknown } | null;
   };
 
   for (const raw of (assignments.data ?? []) as AssignmentRow[]) {
+    if (!isGrantUnexpired(raw.expires_at, now)) continue;
     if (!raw.roles || raw.roles.deleted_at) continue;
     const scope = parseScope(raw.scope_type, raw.scope_id, staff.staffId);
     if (!scope) continue;
@@ -213,7 +227,7 @@ export async function loadGrants(
 
   const overrides = await supabase
     .from("staff_permission_overrides")
-    .select("effect, scope_type, scope_id, permissions ( key, deleted_at )")
+    .select("effect, scope_type, scope_id, expires_at, permissions ( key, deleted_at )")
     .eq("staff_id", staff.staffId)
     .eq("org_id", staff.organizationId)
     .is("deleted_at", null);
@@ -222,10 +236,12 @@ export async function loadGrants(
     effect: string;
     scope_type: string;
     scope_id: string | null;
+    expires_at: string | null;
     permissions: NestedPermission;
   };
 
   for (const raw of (overrides.data ?? []) as OverrideRow[]) {
+    if (!isGrantUnexpired(raw.expires_at, now)) continue;
     const perm = raw.permissions;
     if (!perm || perm.deleted_at) continue;
     if (!isPlatformPermission(perm.key)) continue;

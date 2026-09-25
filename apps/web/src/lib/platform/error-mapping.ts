@@ -11,6 +11,8 @@ import type { AppErrorCode } from "@/lib/application/api-errors";
 const SESSION_DENIALS = new Set([
   "UNAUTHENTICATED",
   "NO_ORGANIZATION_MEMBERSHIP",
+  "NO_PLATFORM_IDENTITY",
+  "STAFF_INACTIVE",
 ]);
 
 export function isSessionDenial(err: unknown): boolean {

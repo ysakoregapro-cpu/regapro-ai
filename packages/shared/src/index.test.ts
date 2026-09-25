@@ -60,6 +60,16 @@ describe("confidentiality model", () => {
     ).toBe("people");
   });
 
+  it("staff-only path is company and ignores override", () => {
+    expect(resolveEffectiveClearance({ departmentKey: null })).toBe("company");
+    expect(
+      resolveEffectiveClearance({
+        departmentKey: null,
+        clearanceOverride: "executive",
+      }),
+    ).toBe("company");
+  });
+
   it("lists selectable levels", () => {
     expect(selectableLevelsForClearance("people")).toEqual([
       "company",

@@ -9,8 +9,17 @@ import {
 } from "./membership";
 import {
   buildAccessContextFromMembership,
+  buildAccessContextFromStaff,
   type SessionAccessBundle,
 } from "./access-context";
+import { decideLoginAdmission } from "./session-admission";
+import {
+  loadGrants,
+  loadStaffRecord,
+  type PlatformQueryClient,
+} from "@/lib/platform/staff-queries";
+import { withLegacyCompatibilityGrants } from "@regapro/platform";
+import { distinctScopes } from "@regapro/security";
 
 export type SessionUser = {
   id: string;
@@ -60,18 +69,22 @@ export async function requireSessionUser(): Promise<SessionUser> {
   return user;
 }
 
-/**
- * Current user + live membership + AccessContext.
- * Returns null when unauthenticated or when the user has no org membership.
- */
-export async function getSessionAccess(opts?: {
+export type SessionAccessOptions = {
   threadLevel?: SessionAccessBundle["access"]["threadConfidentialityLevel"];
   threadVisibility?: SessionAccessBundle["access"]["threadVisibility"];
   participantThreadIds?: string[];
   projectIds?: string[];
   auditMode?: boolean;
   auditCaseId?: string | null;
-}): Promise<SessionAccessBundle | null> {
+};
+
+/**
+ * Current user + AccessContext.
+ * Succeeds for a usable AI membership OR an active staff-only identity.
+ */
+export async function getSessionAccess(
+  opts?: SessionAccessOptions,
+): Promise<SessionAccessBundle | null> {
   if (isDevSampleMode()) {
     return null;
   }
@@ -83,15 +96,59 @@ export async function getSessionAccess(opts?: {
   }
 
   const membership = await loadLiveMembership(supabase, data.user.id);
-  if (!membership) {
+  const platformClient = supabase as unknown as PlatformQueryClient;
+  const staffLookup = await loadStaffRecord(platformClient, data.user.id);
+  const admission = decideLoginAdmission({ membership, staff: staffLookup });
+  if (!admission.ok) {
     return null;
   }
 
-  return buildAccessContextFromMembership(membership, opts);
+  const email = data.user.email ?? "";
+  const displayName =
+    membership?.displayName ||
+    (staffLookup.kind === "found" ? staffLookup.staff.name : null) ||
+    data.user.email?.split("@")[0] ||
+    "利用者";
+
+  if (admission.kind === "legacy_membership") {
+    const bundle = buildAccessContextFromMembership(admission.membership, opts);
+    if (staffLookup.kind === "found") {
+      const { grants, roleIds } = await loadGrants(platformClient, staffLookup.staff);
+      bundle.access = {
+        ...bundle.access,
+        authUserId: data.user.id,
+        staffId: staffLookup.staff.staffId,
+        staffNo: staffLookup.staff.staffNo,
+        employmentType: staffLookup.staff.employmentType,
+        staffStatus: staffLookup.staff.status,
+        departmentIds:
+          staffLookup.staff.departmentIds.length > 0
+            ? staffLookup.staff.departmentIds
+            : bundle.access.departmentIds,
+        roleIds,
+        permissions: grants,
+        scopes: distinctScopes(grants),
+      };
+    } else {
+      bundle.access = withLegacyCompatibilityGrants(bundle.access);
+    }
+    return bundle;
+  }
+
+  const { grants, roleIds } = await loadGrants(platformClient, admission.staff);
+  return buildAccessContextFromStaff({
+    userId: data.user.id,
+    email,
+    displayName,
+    staff: admission.staff,
+    grants,
+    roleIds,
+    opts,
+  });
 }
 
 export async function requireSessionAccess(
-  opts?: Parameters<typeof getSessionAccess>[0],
+  opts?: SessionAccessOptions,
 ): Promise<SessionAccessBundle> {
   const bundle = await getSessionAccess(opts);
   if (!bundle) {

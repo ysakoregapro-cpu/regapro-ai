@@ -89,10 +89,20 @@ export function selectableLevelsForClearance(
   return CONFIDENTIALITY_LEVELS.filter((l) => isConfidentialityAtMost(l, max));
 }
 
+/**
+ * Knowledge Clearance ceiling.
+ *
+ * `departmentKey === null` is the explicit staff-only path: no membership
+ * department exists, so the ceiling is company. Clearance overrides are
+ * ignored on that path — they belong to organization memberships only.
+ */
 export function resolveEffectiveClearance(input: {
-  departmentKey: DepartmentKey;
+  departmentKey: DepartmentKey | null;
   clearanceOverride?: ConfidentialityLevel | null;
 }): ConfidentialityLevel {
+  if (input.departmentKey === null) {
+    return "company";
+  }
   if (input.clearanceOverride) {
     ConfidentialityLevelSchema.parse(input.clearanceOverride);
     return input.clearanceOverride;

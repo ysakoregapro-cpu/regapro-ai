@@ -9,6 +9,7 @@ import {
   effectiveSearchCeiling,
   filterResourcesByAccess,
   hasPermission,
+  isStaffOnlySession,
 } from "./index.js";
 
 describe("permissions include conversation audit separation", () => {
@@ -169,6 +170,34 @@ describe("access context & retrieval", () => {
         visibility: "private",
       }),
     ).toBe(false);
+  });
+
+  it("staff-only context stays at company clearance and has empty AI keys", () => {
+    const ctx = buildAccessContext({
+      userId: "auth-staff-only",
+      organizationId: "org",
+      membershipId: null,
+      departmentId: null,
+      departmentKey: null,
+      roles: [],
+      clearanceOverride: "executive",
+      staff: {
+        staffId: "staff-1",
+        staffNo: "RP-000009",
+        name: "アルバイト",
+        employmentType: "part_time",
+        status: "active",
+      },
+    });
+    expect(isStaffOnlySession(ctx)).toBe(true);
+    expect(ctx.membershipId).toBeNull();
+    expect(ctx.departmentKey).toBeNull();
+    expect(ctx.staffId).toBe("staff-1");
+    expect(ctx.roleKeys).toEqual([]);
+    expect(ctx.permissionKeys).toEqual([]);
+    expect(ctx.maximumConfidentialityLevel).toBe("company");
+    expect(canAssignConfidentialityLevel(ctx, "people")).toBe(false);
+    expect(canAssignConfidentialityLevel(ctx, "executive")).toBe(false);
   });
 });
 

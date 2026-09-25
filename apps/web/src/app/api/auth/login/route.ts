@@ -6,6 +6,11 @@ import {
   loadLiveMembership,
   type RegaproSupabaseClient,
 } from "@/lib/supabase/membership";
+import { decideLoginAdmission } from "@/lib/supabase/session-admission";
+import {
+  loadStaffRecord,
+  type PlatformQueryClient,
+} from "@/lib/platform/staff-queries";
 
 const bodySchema = z.object({
   email: z.string().email(),
@@ -52,20 +57,26 @@ export async function POST(request: Request) {
     );
   }
 
-  const membership = await loadLiveMembership(
-    supabase as unknown as RegaproSupabaseClient,
+  const client = supabase as unknown as RegaproSupabaseClient;
+  const membership = await loadLiveMembership(client, data.user.id);
+  const staff = await loadStaffRecord(
+    supabase as unknown as PlatformQueryClient,
     data.user.id,
   );
-  if (!membership) {
+  const admission = decideLoginAdmission({ membership, staff });
+
+  if (!admission.ok) {
     await supabase.auth.signOut();
     return NextResponse.json(
-      {
-        error:
-          "組織メンバーシップがありません。管理者に招待を依頼してください。",
-      },
+      { error: admission.message, code: admission.code },
       { status: 403 },
     );
   }
+
+  const organizationId =
+    admission.kind === "legacy_membership"
+      ? admission.membership.organizationId
+      : admission.staff.organizationId;
 
   const nextPath =
     parsed.data.next && parsed.data.next.startsWith("/")
@@ -76,7 +87,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       userId: data.user.id,
-      organizationId: membership.organizationId,
+      organizationId,
+      sessionKind: admission.kind,
       next: nextPath,
     });
   }

@@ -16,11 +16,11 @@ export type AppSession = {
     email: string;
     name: string;
     organizationId: string;
-    membershipId: string;
+    membershipId: string | null;
     departmentId: string | null;
-    departmentKey: SampleMembership["departmentKey"];
+    departmentKey: SampleMembership["departmentKey"] | null;
     departmentLabel: string;
-    role: SampleMembership["role"];
+    role: SampleMembership["role"] | null;
   };
   access: AccessContext;
   maximumConfidentialityLevel: ConfidentialityLevel;
@@ -67,17 +67,17 @@ export async function resolveAppSession(opts?: {
   const bundle = await requireSessionAccess({
     threadLevel: opts?.threadLevel,
   });
-  const primaryRole = bundle.membership.roles[0] ?? "member";
+  const primaryRole = bundle.membership?.roles[0] ?? null;
   return {
     membership: {
-      userId: bundle.membership.userId,
-      email: bundle.membership.email,
-      name: bundle.membership.displayName,
-      organizationId: bundle.membership.organizationId,
-      membershipId: bundle.membership.membershipId,
-      departmentId: bundle.membership.departmentId,
-      departmentKey: bundle.membership.departmentKey,
-      departmentLabel: bundle.membership.departmentLabel,
+      userId: bundle.identity.userId,
+      email: bundle.identity.email,
+      name: bundle.identity.displayName,
+      organizationId: bundle.identity.organizationId,
+      membershipId: bundle.membership?.membershipId ?? null,
+      departmentId: bundle.membership?.departmentId ?? bundle.access.departmentId,
+      departmentKey: bundle.membership?.departmentKey ?? null,
+      departmentLabel: bundle.membership?.departmentLabel ?? "",
       role: primaryRole,
     },
     access: bundle.access,
