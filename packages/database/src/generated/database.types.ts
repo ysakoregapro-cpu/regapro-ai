@@ -223,40 +223,60 @@ export type Database = {
         Row: {
           action: string
           actor_id: string | null
+          actor_staff_id: string | null
           created_at: string
           id: string
           metadata: Json
           org_id: string
           resource_id: string | null
           resource_type: string
+          subject_staff_id: string | null
         }
         Insert: {
           action: string
           actor_id?: string | null
+          actor_staff_id?: string | null
           created_at?: string
           id?: string
           metadata?: Json
           org_id: string
           resource_id?: string | null
           resource_type: string
+          subject_staff_id?: string | null
         }
         Update: {
           action?: string
           actor_id?: string | null
+          actor_staff_id?: string | null
           created_at?: string
           id?: string
           metadata?: Json
           org_id?: string
           resource_id?: string | null
           resource_type?: string
+          subject_staff_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "audit_logs_actor_staff_id_fkey"
+            columns: ["actor_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
           {
             foreignKeyName: "audit_logs_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_logs_subject_staff_id_fkey"
+            columns: ["subject_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
           },
         ]
       }
@@ -3667,6 +3687,265 @@ export type Database = {
           },
         ]
       }
+      shift_request_dates: {
+        Row: {
+          created_at: string
+          end_time: string | null
+          id: string
+          note: string | null
+          org_id: string
+          preference_type: string
+          shift_request_id: string
+          start_time: string | null
+          time_unspecified: boolean | null
+          updated_at: string
+          work_date: string
+          work_location_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          end_time?: string | null
+          id?: string
+          note?: string | null
+          org_id: string
+          preference_type: string
+          shift_request_id: string
+          start_time?: string | null
+          time_unspecified?: boolean | null
+          updated_at?: string
+          work_date: string
+          work_location_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          end_time?: string | null
+          id?: string
+          note?: string | null
+          org_id?: string
+          preference_type?: string
+          shift_request_id?: string
+          start_time?: string | null
+          time_unspecified?: boolean | null
+          updated_at?: string
+          work_date?: string
+          work_location_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_request_dates_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_request_dates_shift_request_id_fkey"
+            columns: ["shift_request_id"]
+            isOneToOne: false
+            referencedRelation: "shift_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_request_dates_work_location_id_fkey"
+            columns: ["work_location_id"]
+            isOneToOne: false
+            referencedRelation: "work_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift_requests: {
+        Row: {
+          cancelled_at: string | null
+          created_at: string
+          id: string
+          org_id: string
+          period_end: string
+          period_start: string
+          previous_request_id: string | null
+          requested_by_staff_id: string
+          staff_id: string
+          status: string
+          submitted_at: string | null
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          cancelled_at?: string | null
+          created_at?: string
+          id?: string
+          org_id: string
+          period_end: string
+          period_start: string
+          previous_request_id?: string | null
+          requested_by_staff_id: string
+          staff_id: string
+          status: string
+          submitted_at?: string | null
+          updated_at?: string
+          version: number
+        }
+        Update: {
+          cancelled_at?: string | null
+          created_at?: string
+          id?: string
+          org_id?: string
+          period_end?: string
+          period_start?: string
+          previous_request_id?: string | null
+          requested_by_staff_id?: string
+          staff_id?: string
+          status?: string
+          submitted_at?: string | null
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_requests_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_requests_previous_request_id_fkey"
+            columns: ["previous_request_id"]
+            isOneToOne: false
+            referencedRelation: "shift_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_requests_requested_by_staff_id_fkey"
+            columns: ["requested_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "shift_requests_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+        ]
+      }
+      shifts: {
+        Row: {
+          cancelled_at: string | null
+          cancelled_by_staff_id: string | null
+          created_at: string
+          end_day_offset: number
+          end_time: string | null
+          external_ref: string | null
+          id: string
+          note: string | null
+          org_id: string
+          pre_report_url: string | null
+          published_at: string | null
+          published_by_staff_id: string | null
+          source: string
+          source_request_date_id: string | null
+          staff_id: string
+          start_time: string | null
+          status: string
+          time_unspecified: boolean | null
+          updated_at: string
+          work_date: string
+          work_location_id: string | null
+        }
+        Insert: {
+          cancelled_at?: string | null
+          cancelled_by_staff_id?: string | null
+          created_at?: string
+          end_day_offset?: number
+          end_time?: string | null
+          external_ref?: string | null
+          id?: string
+          note?: string | null
+          org_id: string
+          pre_report_url?: string | null
+          published_at?: string | null
+          published_by_staff_id?: string | null
+          source?: string
+          source_request_date_id?: string | null
+          staff_id: string
+          start_time?: string | null
+          status: string
+          time_unspecified?: boolean | null
+          updated_at?: string
+          work_date: string
+          work_location_id?: string | null
+        }
+        Update: {
+          cancelled_at?: string | null
+          cancelled_by_staff_id?: string | null
+          created_at?: string
+          end_day_offset?: number
+          end_time?: string | null
+          external_ref?: string | null
+          id?: string
+          note?: string | null
+          org_id?: string
+          pre_report_url?: string | null
+          published_at?: string | null
+          published_by_staff_id?: string | null
+          source?: string
+          source_request_date_id?: string | null
+          staff_id?: string
+          start_time?: string | null
+          status?: string
+          time_unspecified?: boolean | null
+          updated_at?: string
+          work_date?: string
+          work_location_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shifts_cancelled_by_staff_id_fkey"
+            columns: ["cancelled_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "shifts_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_published_by_staff_id_fkey"
+            columns: ["published_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "shifts_source_request_date_id_fkey"
+            columns: ["source_request_date_id"]
+            isOneToOne: false
+            referencedRelation: "shift_request_dates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shifts_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "shifts_work_location_id_fkey"
+            columns: ["work_location_id"]
+            isOneToOne: false
+            referencedRelation: "work_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff: {
         Row: {
           created_at: string
@@ -4246,11 +4525,172 @@ export type Database = {
           },
         ]
       }
+      work_locations: {
+        Row: {
+          address_text: string | null
+          code: string
+          created_at: string
+          deleted_at: string | null
+          id: string
+          is_active: boolean
+          name: string
+          org_id: string
+          updated_at: string
+        }
+        Insert: {
+          address_text?: string | null
+          code: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          org_id: string
+          updated_at?: string
+        }
+        Update: {
+          address_text?: string | null
+          code?: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          org_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_locations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      cancel_shift: {
+        Args: { p_shift_id: string }
+        Returns: {
+          cancelled_at: string | null
+          cancelled_by_staff_id: string | null
+          created_at: string
+          end_day_offset: number
+          end_time: string | null
+          external_ref: string | null
+          id: string
+          note: string | null
+          org_id: string
+          pre_report_url: string | null
+          published_at: string | null
+          published_by_staff_id: string | null
+          source: string
+          source_request_date_id: string | null
+          staff_id: string
+          start_time: string | null
+          status: string
+          time_unspecified: boolean | null
+          updated_at: string
+          work_date: string
+          work_location_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "shifts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      cancel_shift_request: {
+        Args: { p_request_id: string }
+        Returns: {
+          cancelled_at: string | null
+          created_at: string
+          id: string
+          org_id: string
+          period_end: string
+          period_start: string
+          previous_request_id: string | null
+          requested_by_staff_id: string
+          staff_id: string
+          status: string
+          submitted_at: string | null
+          updated_at: string
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "shift_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_or_replace_shift_request_draft: {
+        Args: {
+          p_dates?: Json
+          p_for_staff_id?: string
+          p_period_end: string
+          p_period_start: string
+        }
+        Returns: {
+          cancelled_at: string | null
+          created_at: string
+          id: string
+          org_id: string
+          period_end: string
+          period_start: string
+          previous_request_id: string | null
+          requested_by_staff_id: string
+          staff_id: string
+          status: string
+          submitted_at: string | null
+          updated_at: string
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "shift_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      publish_shift: {
+        Args: { p_shift_id: string }
+        Returns: {
+          cancelled_at: string | null
+          cancelled_by_staff_id: string | null
+          created_at: string
+          end_day_offset: number
+          end_time: string | null
+          external_ref: string | null
+          id: string
+          note: string | null
+          org_id: string
+          pre_report_url: string | null
+          published_at: string | null
+          published_by_staff_id: string | null
+          source: string
+          source_request_date_id: string | null
+          staff_id: string
+          start_time: string | null
+          status: string
+          time_unspecified: boolean | null
+          updated_at: string
+          work_date: string
+          work_location_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "shifts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       regapro_backfill_staff_from_auth: {
         Args: {
           p_actor_auth_user_id?: string
@@ -4411,6 +4851,10 @@ export type Database = {
         Args: { p_ai_permission_keys: string[] }
         Returns: string[]
       }
+      regapro_has_any_shift_permission: {
+        Args: { p_org_id: string }
+        Returns: boolean
+      }
       regapro_has_conversation_audit_access: {
         Args: { p_org_id: string }
         Returns: boolean
@@ -4482,6 +4926,7 @@ export type Database = {
         Returns: string[]
       }
       regapro_next_staff_no: { Args: { p_org_id: string }; Returns: string }
+      regapro_shift_rpc_active: { Args: never; Returns: boolean }
       regapro_staff_belongs_to_org: {
         Args: { p_org_id: string }
         Returns: boolean
@@ -4494,8 +4939,44 @@ export type Database = {
         Args: { p_org_id: string; p_staff_id: string }
         Returns: string[]
       }
+      regapro_write_shift_audit: {
+        Args: {
+          p_action: string
+          p_actor_staff_id: string
+          p_metadata?: Json
+          p_org_id: string
+          p_resource_id: string
+          p_resource_type: string
+          p_subject_staff_id: string
+        }
+        Returns: undefined
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      submit_shift_request: {
+        Args: { p_request_id: string }
+        Returns: {
+          cancelled_at: string | null
+          created_at: string
+          id: string
+          org_id: string
+          period_end: string
+          period_start: string
+          previous_request_id: string | null
+          requested_by_staff_id: string
+          staff_id: string
+          status: string
+          submitted_at: string | null
+          updated_at: string
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "shift_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
       [_ in never]: never
@@ -4513,6 +4994,8 @@ export type Database = {
           created_at: string | null
           file_size_limit: number | null
           id: string
+          lifecycle_configuration: Json | null
+          lifecycle_configuration_generation: string | null
           name: string
           owner: string | null
           owner_id: string | null
@@ -4527,6 +5010,8 @@ export type Database = {
           created_at?: string | null
           file_size_limit?: number | null
           id: string
+          lifecycle_configuration?: Json | null
+          lifecycle_configuration_generation?: string | null
           name: string
           owner?: string | null
           owner_id?: string | null
@@ -4541,6 +5026,8 @@ export type Database = {
           created_at?: string | null
           file_size_limit?: number | null
           id?: string
+          lifecycle_configuration?: Json | null
+          lifecycle_configuration_generation?: string | null
           name?: string
           owner?: string | null
           owner_id?: string | null
@@ -4855,7 +5342,7 @@ export type Database = {
         Returns: string
       }
       get_size_by_bucket: {
-        Args: never
+        Args: { delete_markers?: string; noncurrent_versions?: string }
         Returns: {
           bucket_id: string
           size: number
@@ -4869,6 +5356,7 @@ export type Database = {
           next_key_token?: string
           next_upload_token?: string
           prefix_param: string
+          raw_prefix_param?: string
         }
         Returns: {
           created_at: string
@@ -4879,28 +5367,38 @@ export type Database = {
       list_objects_with_delimiter: {
         Args: {
           _bucket_id: string
+          delete_markers?: string
           delimiter_param: string
           max_keys?: number
           next_token?: string
+          next_token_archived_at?: string
+          next_token_version?: string
+          noncurrent_versions?: string
           prefix_param: string
           sort_order?: string
           start_after?: string
         }
         Returns: {
+          archived_at: string
           created_at: string
           id: string
+          is_delete_marker: boolean
+          is_versioned: boolean
           last_accessed_at: string
           metadata: Json
           name: string
           updated_at: string
+          version: string
         }[]
       }
       operation: { Args: never; Returns: string }
       search: {
         Args: {
           bucketname: string
+          delete_markers?: string
           levels?: number
           limits?: number
+          noncurrent_versions?: string
           offsets?: number
           prefix: string
           search?: string
@@ -4908,16 +5406,22 @@ export type Database = {
           sortorder?: string
         }
         Returns: {
+          archived_at: string
           created_at: string
           id: string
+          is_delete_marker: boolean
+          is_versioned: boolean
           last_accessed_at: string
           metadata: Json
           name: string
           updated_at: string
+          version: string
         }[]
       }
       search_by_timestamp: {
         Args: {
+          delete_markers?: string
+          noncurrent_versions?: string
           p_bucket_id: string
           p_level: number
           p_limit: number
@@ -4926,36 +5430,50 @@ export type Database = {
           p_sort_column_after: string
           p_sort_order: string
           p_start_after: string
+          p_start_after_version?: string
         }
         Returns: {
+          archived_at: string
           created_at: string
           id: string
+          is_delete_marker: boolean
+          is_versioned: boolean
           key: string
           last_accessed_at: string
           metadata: Json
           name: string
           updated_at: string
+          version: string
         }[]
       }
       search_v2: {
         Args: {
           bucket_name: string
+          delete_markers?: string
           levels?: number
           limits?: number
+          noncurrent_versions?: string
           prefix: string
           sort_column?: string
           sort_column_after?: string
           sort_order?: string
           start_after?: string
+          start_after_archived_at?: string
+          start_after_is_continuation?: boolean
+          start_after_version?: string
         }
         Returns: {
+          archived_at: string
           created_at: string
           id: string
+          is_delete_marker: boolean
+          is_versioned: boolean
           key: string
           last_accessed_at: string
           metadata: Json
           name: string
           updated_at: string
+          version: string
         }[]
       }
     }

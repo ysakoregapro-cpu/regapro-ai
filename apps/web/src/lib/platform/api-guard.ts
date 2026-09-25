@@ -4,6 +4,7 @@ import type { PermissionScope, PlatformPermission } from "@regapro/shared";
 import type { AccessContext } from "@regapro/security";
 import {
   isPlatformAccessError,
+  requireAnyPermission as requireAnyPermissionPure,
   requireModuleAccess as requireModuleAccessPure,
   requirePermission as requirePermissionPure,
   type ModuleId,
@@ -29,6 +30,8 @@ export type GuardedHandler<TContext = unknown> = (args: {
 export type ApiGuardOptions = {
   moduleId?: ModuleId;
   permission?: PlatformPermission;
+  /** Any-of check. Used when a planned module is not routable but APIs may open. */
+  anyPermissions?: readonly PlatformPermission[];
   permissionScope?: PermissionScope;
 };
 
@@ -50,6 +53,13 @@ export function withPlatformGuard<TContext = unknown>(
       }
       if (options.permission) {
         requirePermissionPure(access, options.permission, options.permissionScope);
+      }
+      if (options.anyPermissions?.length) {
+        requireAnyPermissionPure(
+          access,
+          options.anyPermissions,
+          options.permissionScope,
+        );
       }
     } catch (err) {
       const code = platformErrorToAppCode(err);

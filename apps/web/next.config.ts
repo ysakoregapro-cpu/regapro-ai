@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
     "@regapro/security",
     "@regapro/database",
     "@regapro/tasks",
+    "@regapro/work",
     "@regapro/knowledge",
     "@regapro/research",
     "@regapro/notifications",

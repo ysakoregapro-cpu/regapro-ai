@@ -29,6 +29,12 @@ import {
   runPlatformCases,
   setupPlatformFixtures,
 } from "./cases-platform.mjs";
+import {
+  cleanupShiftFixtures,
+  runShiftCases,
+  setupShiftFixtures,
+  shiftTablesReady,
+} from "./cases-shift.mjs";
 
 async function main() {
   loadEnvFiles();
@@ -44,6 +50,7 @@ async function main() {
 
   let fx = null;
   let platform = null;
+  let shift = null;
   try {
     console.log("Setting up fixtures (service_role / admin auth)...");
     fx = await setupFixtures({ ...env, runId });
@@ -60,6 +67,18 @@ async function main() {
       console.log("\nSetting up integrated app foundation fixtures...");
       platform = await setupPlatformFixtures(fx);
       await runPlatformCases(reporter, fx, platform);
+
+      const shiftReady = await shiftTablesReady(fx.admin);
+      if (shiftReady.ready) {
+        console.log("\nSetting up shift domain fixtures...");
+        shift = await setupShiftFixtures(fx, platform);
+        await runShiftCases(reporter, fx, shift);
+      } else {
+        reporter.skip(
+          "shift domain cases",
+          `table ${shiftReady.missing} not present — apply supabase/migrations/20260925120000_shift_domain_foundation.sql first`,
+        );
+      }
     } else {
       reporter.skip(
         "integrated app foundation cases",
@@ -73,6 +92,7 @@ async function main() {
     if (fx && !keep) {
       console.log("\nCleaning fixture data...");
       try {
+        await cleanupShiftFixtures(fx, shift);
         await cleanupPlatformFixtures(fx, platform);
         await cleanupFixtures(fx);
         reporter.pass("cleanup fixture users/rows", "completed");

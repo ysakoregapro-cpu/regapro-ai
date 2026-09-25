@@ -28,6 +28,7 @@
     "@regapro/security": "*",
     "@regapro/shared": "*",
     "@regapro/tasks": "*",
+    "@regapro/work": "*",
     "@regapro/ui": "*",
     "@regapro/web-intelligence": "*",
     "@supabase/ssr": "^0.6.1",

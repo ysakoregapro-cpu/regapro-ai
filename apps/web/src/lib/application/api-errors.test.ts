@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ShiftDomainError } from "@regapro/work";
 import {
   classifyThrown,
   publicErrorMessage,
@@ -19,6 +20,20 @@ describe("api-errors", () => {
 
   it("maps missing rows to NOT_FOUND", () => {
     expect(classifyThrown(new Error("PGRST116"))).toBe("NOT_FOUND");
+  });
+
+  it("maps Shift Domain errors without leaking table names", () => {
+    expect(classifyThrown(new ShiftDomainError("ONE_SIDED_TIME", "x"))).toBe(
+      "VALIDATION",
+    );
+    expect(classifyThrown(new ShiftDomainError("FORBIDDEN", "x"))).toBe("FORBIDDEN");
+    expect(classifyThrown(new ShiftDomainError("INVALID_TRANSITION", "x"))).toBe(
+      "CONFLICT",
+    );
+    expect(classifyThrown(new Error("SHIFT_FORBIDDEN: shift.request required"))).toBe(
+      "FORBIDDEN",
+    );
+    expect(publicErrorMessage("VALIDATION")).not.toMatch(/shift_requests|staff_id/i);
   });
 
   it("does not surface DB internals in public messages", () => {

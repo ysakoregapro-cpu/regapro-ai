@@ -8,6 +8,7 @@
     { "path": "./packages/knowledge" },
     { "path": "./packages/research" },
     { "path": "./packages/tasks" },
+    { "path": "./packages/work" },
     { "path": "./packages/notifications" },
     { "path": "./packages/local-ai" },
     { "path": "./packages/web-intelligence" },

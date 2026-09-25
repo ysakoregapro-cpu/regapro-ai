@@ -9,6 +9,7 @@ export default defineConfig({
         __dirname,
         "../../packages/knowledge/src/approval-messages.ts",
       ),
+      "@regapro/work": path.resolve(__dirname, "../../packages/work/src/index.ts"),
     },
   },
   test: {
