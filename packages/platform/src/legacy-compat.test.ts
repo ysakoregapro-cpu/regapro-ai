@@ -68,7 +68,13 @@ describe("existing AI users keep working before staff backfill", () => {
       "sales.view_own",
       "sales.manage",
       "weekly_pay.submit",
+      "weekly_pay.review",
+      "weekly_pay.pay",
       "weekly_pay.manage",
+      "weekly_pay.policy_manage",
+      "shift.view_own",
+      "shift.manage",
+      "documents.use",
     ] as const) {
       expect(hasPermission(ctx, permission)).toBe(false);
     }

@@ -30,7 +30,17 @@ export const PLATFORM_PERMISSIONS = [
   "sales.manage",
 
   "weekly_pay.submit",
+  "weekly_pay.review",
+  "weekly_pay.pay",
   "weekly_pay.manage",
+  "weekly_pay.policy_manage",
+
+  "shift.view_own",
+  "shift.request",
+  "shift.manage",
+
+  "documents.use",
+  "documents.manage",
 
   "chat.use",
 
@@ -65,7 +75,15 @@ export const PLATFORM_PERMISSION_LABELS: Record<PlatformPermission, string> = {
   "sales.view_own": "自分の売上を見る",
   "sales.manage": "売上を管理する",
   "weekly_pay.submit": "週払いを申請する",
+  "weekly_pay.review": "週払いを確認する",
+  "weekly_pay.pay": "週払いを支払う",
   "weekly_pay.manage": "週払いを管理する",
+  "weekly_pay.policy_manage": "週払い方針を管理する",
+  "shift.view_own": "自分のシフトを見る",
+  "shift.request": "シフト希望を出す",
+  "shift.manage": "シフトを管理する",
+  "documents.use": "書類を使う",
+  "documents.manage": "書類を管理する",
   "chat.use": "社内チャットを使う",
   "meeting.use": "議事録を使う",
   "meeting.manage": "議事録を管理する",

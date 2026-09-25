@@ -58,6 +58,9 @@ describe("permission-driven navigation", () => {
     expect(all.map((m) => m.id)).not.toContain("expense");
     expect(all.map((m) => m.id)).not.toContain("sales");
     expect(all.map((m) => m.id)).not.toContain("chat");
+    expect(all.map((m) => m.id)).not.toContain("weekly_pay");
+    expect(all.map((m) => m.id)).not.toContain("shift");
+    expect(all.map((m) => m.id)).not.toContain("documents");
   });
 
   it("does not consult employment type", () => {

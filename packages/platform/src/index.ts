@@ -1,4 +1,5 @@
 export * from "./modules.js";
+export * from "./role-templates.js";
 export * from "./rbac.js";
 export * from "./navigation.js";
 export * from "./guards.js";
