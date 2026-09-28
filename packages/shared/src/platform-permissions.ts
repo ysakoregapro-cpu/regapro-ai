@@ -39,6 +39,11 @@ export const PLATFORM_PERMISSIONS = [
   "shift.request",
   "shift.manage",
 
+  "work_record.view_own",
+  "work_record.submit",
+  "work_record.manage",
+  "employment_terms.manage",
+
   "documents.use",
   "documents.manage",
 
@@ -82,6 +87,10 @@ export const PLATFORM_PERMISSION_LABELS: Record<PlatformPermission, string> = {
   "shift.view_own": "自分のシフトを見る",
   "shift.request": "シフト希望を出す",
   "shift.manage": "シフトを管理する",
+  "work_record.view_own": "自分の勤務実績を見る",
+  "work_record.submit": "自分の勤務実績を提出する",
+  "work_record.manage": "勤務実績を管理する",
+  "employment_terms.manage": "時給条件を管理する",
   "documents.use": "書類を使う",
   "documents.manage": "書類を管理する",
   "chat.use": "社内チャットを使う",

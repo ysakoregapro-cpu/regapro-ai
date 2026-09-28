@@ -2,7 +2,7 @@
  * Shift Domain types.
  *
  * Shift = planned work (勤務予定).
- * Work Record = actual hours (Phase 3 — not in this package yet).
+ * Work Record / Employment Term = actual hours and wage history (see work-types).
  * Weekly Pay = pay from confirmed Work Records (Phase 4+ — not here).
  *
  * Person identity is always `staffId`. Display names are never keys.

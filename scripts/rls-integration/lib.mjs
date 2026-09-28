@@ -56,6 +56,13 @@ export function createAdminClient(url, secret) {
   });
 }
 
+/** Unauthenticated anon-key client (role = anon, no user JWT). */
+export function createAnonClient(url, anon) {
+  return createClient(url, anon, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
 /** Authenticated client bound to a user access token (RLS as that user). */
 export function createUserClient(url, anon, accessToken) {
   return createClient(url, anon, {

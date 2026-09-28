@@ -35,6 +35,13 @@ import {
   setupShiftFixtures,
   shiftTablesReady,
 } from "./cases-shift.mjs";
+import {
+  cleanupWorkRecordFixtures,
+  runWorkRecordCases,
+  setupWorkRecordFixtures,
+  workRecordTablesReady,
+} from "./cases-work-record.mjs";
+import { runShiftWorkAclCases } from "./cases-rpc-acl.mjs";
 
 async function main() {
   loadEnvFiles();
@@ -51,6 +58,7 @@ async function main() {
   let fx = null;
   let platform = null;
   let shift = null;
+  let workRecord = null;
   try {
     console.log("Setting up fixtures (service_role / admin auth)...");
     fx = await setupFixtures({ ...env, runId });
@@ -79,6 +87,23 @@ async function main() {
           `table ${shiftReady.missing} not present — apply supabase/migrations/20260925120000_shift_domain_foundation.sql first`,
         );
       }
+
+      const workReady = await workRecordTablesReady(fx.admin);
+      if (workReady.ready) {
+        console.log("\nSetting up work record / employment terms fixtures...");
+        workRecord = await setupWorkRecordFixtures(fx, platform);
+        await runWorkRecordCases(reporter, fx, workRecord);
+      } else {
+        reporter.skip(
+          "work record domain cases",
+          `table ${workReady.missing} not present — apply supabase/migrations/20260925180000_work_record_employment_terms_foundation.sql first`,
+        );
+      }
+
+      if (shiftReady.ready && workReady.ready) {
+        console.log("\nChecking Phase 2/3 RPC ACL hardening...");
+        await runShiftWorkAclCases(reporter, fx, env);
+      }
     } else {
       reporter.skip(
         "integrated app foundation cases",
@@ -92,6 +117,7 @@ async function main() {
     if (fx && !keep) {
       console.log("\nCleaning fixture data...");
       try {
+        await cleanupWorkRecordFixtures(fx, workRecord);
         await cleanupShiftFixtures(fx, shift);
         await cleanupPlatformFixtures(fx, platform);
         await cleanupFixtures(fx);

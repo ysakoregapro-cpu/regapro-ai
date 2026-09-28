@@ -85,6 +85,29 @@ describe("shift permission contract", () => {
   });
 });
 
+describe("work record / employment terms permission contract", () => {
+  it("gives a work record user view_own and submit only", () => {
+    const ctx = makeAccess({ grants: grantsFrom("platform_work_record_user") });
+    expect(hasPermission(ctx, "work_record.view_own")).toBe(true);
+    expect(hasPermission(ctx, "work_record.submit")).toBe(true);
+    expect(hasPermission(ctx, "work_record.manage")).toBe(false);
+    expect(hasPermission(ctx, "employment_terms.manage")).toBe(false);
+  });
+
+  it("gives a work record manager manage without submit", () => {
+    const ctx = makeAccess({ grants: grantsFrom("platform_work_record_manager") });
+    expect(hasPermission(ctx, "work_record.manage")).toBe(true);
+    expect(hasPermission(ctx, "work_record.view_own")).toBe(false);
+    expect(hasPermission(ctx, "work_record.submit")).toBe(false);
+  });
+
+  it("gives an employment terms manager only that key", () => {
+    const ctx = makeAccess({ grants: grantsFrom("platform_employment_terms_manager") });
+    expect(hasPermission(ctx, "employment_terms.manage")).toBe(true);
+    expect(hasPermission(ctx, "work_record.manage")).toBe(false);
+  });
+});
+
 describe("documents permission seed", () => {
   it("registers use and manage without implying each other", () => {
     expect(isPlatformPermission("documents.use")).toBe(true);
@@ -104,6 +127,9 @@ describe("employment type is not a grant source", () => {
       expect(hasPermission(ctx, "weekly_pay.review")).toBe(false);
       expect(hasPermission(ctx, "weekly_pay.pay")).toBe(false);
       expect(hasPermission(ctx, "shift.manage")).toBe(false);
+      expect(hasPermission(ctx, "work_record.submit")).toBe(false);
+      expect(hasPermission(ctx, "work_record.manage")).toBe(false);
+      expect(hasPermission(ctx, "employment_terms.manage")).toBe(false);
     }
   });
 });
@@ -137,6 +163,10 @@ describe("platform_admin template", () => {
         "shift.view_own",
         "shift.request",
         "shift.manage",
+        "work_record.view_own",
+        "work_record.submit",
+        "work_record.manage",
+        "employment_terms.manage",
         "documents.use",
         "documents.manage",
       ]),
@@ -149,7 +179,7 @@ describe("platform_admin template", () => {
 });
 
 describe("planned work modules stay hidden", () => {
-  it("hides weekly_pay, shift, documents, and work even with permissions", () => {
+  it("hides weekly_pay, shift, work_record, documents, and work even with permissions", () => {
     const ctx = makeAccess({
       grants: [
         grant("weekly_pay.submit"),
@@ -160,6 +190,10 @@ describe("planned work modules stay hidden", () => {
         grant("shift.view_own"),
         grant("shift.request"),
         grant("shift.manage"),
+        grant("work_record.view_own"),
+        grant("work_record.submit"),
+        grant("work_record.manage"),
+        grant("employment_terms.manage"),
         grant("documents.use"),
         grant("documents.manage"),
       ],
@@ -167,17 +201,20 @@ describe("planned work modules stay hidden", () => {
 
     expect(getModule("weekly_pay").featureState).toBe("planned");
     expect(getModule("shift").featureState).toBe("planned");
+    expect(getModule("work_record").featureState).toBe("planned");
     expect(getModule("documents").featureState).toBe("planned");
     expect(getModule("work").featureState).toBe("planned");
 
     expect(canViewModule(ctx, getModule("weekly_pay"))).toBe(false);
     expect(canViewModule(ctx, getModule("shift"))).toBe(false);
+    expect(canViewModule(ctx, getModule("work_record"))).toBe(false);
     expect(canViewModule(ctx, getModule("documents"))).toBe(false);
     expect(canViewModule(ctx, getModule("work"))).toBe(false);
 
     const ids = visibleModules(ctx, "desktop").map((m) => m.id);
     expect(ids).not.toContain("weekly_pay");
     expect(ids).not.toContain("shift");
+    expect(ids).not.toContain("work_record");
     expect(ids).not.toContain("documents");
     expect(ids).not.toContain("work");
 
@@ -185,9 +222,11 @@ describe("planned work modules stay hidden", () => {
     const nav = buildNavigation(ctx);
     expect(labels(nav.work)).not.toContain("週払い");
     expect(labels(nav.work)).not.toContain("シフト");
+    expect(labels(nav.work)).not.toContain("勤務実績");
     expect(labels(nav.work)).not.toContain("書類");
     expect(labels(buildDashboardShortcuts(ctx))).not.toContain("週払い");
     expect(labels(buildMobileNavigation(ctx))).not.toContain("シフト");
+    expect(labels(buildMobileNavigation(ctx))).not.toContain("勤務実績");
   });
 
   it("uses any-of permissions for weekly_pay when it later becomes available", () => {
@@ -219,6 +258,7 @@ describe("existing nav and route regression", () => {
     expect(findModuleByPath("/admin/roles")?.id).toBe("admin");
     expect(findModuleByPath("/work/weekly-pay")?.id).toBe("weekly_pay");
     expect(findModuleByPath("/work/shift")?.id).toBe("shift");
+    expect(findModuleByPath("/work/records")?.id).toBe("work_record");
     expect(findModuleByPath("/workspace/documents")?.id).toBe("workspace");
   });
 });

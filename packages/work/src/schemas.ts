@@ -45,3 +45,44 @@ export const ShiftRequestListQuerySchema = z.object({
   periodEnd: isoDate.optional(),
   staffId: z.string().uuid().optional(),
 });
+
+export const CreateEmploymentTermSchema = z.object({
+  staffId: z.string().uuid(),
+  hourlyWageYen: z.number().int().positive(),
+  effectiveFrom: isoDate,
+  effectiveTo: isoDate.nullable().optional(),
+  closeOpenEnded: z.boolean().optional(),
+});
+
+export const RevokeEmploymentTermSchema = z.object({
+  reason: z.string().min(1).max(2000),
+});
+
+export const EmploymentTermListQuerySchema = z.object({
+  staffId: z.string().uuid().optional(),
+});
+
+export const CreateWorkRecordDraftSchema = z.object({
+  workRecordId: z.string().uuid().optional(),
+  staffId: z.string().uuid().optional(),
+  workDate: isoDate,
+  startTime: isoTime,
+  endTime: isoTime,
+  endDayOffset: z.union([z.literal(0), z.literal(1)]).optional(),
+  breakMinutes: z.number().int().min(0).optional(),
+  transportFeeYen: z.number().int().min(0).optional(),
+  workLocationId: z.string().uuid().nullable().optional(),
+  sourceShiftId: z.string().uuid().nullable().optional(),
+  assignmentSource: z.string().max(200).nullable().optional(),
+  assignmentExternalRef: z.string().max(200).nullable().optional(),
+});
+
+export const WorkRecordListQuerySchema = z.object({
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+  staffId: z.string().uuid().optional(),
+});
+
+export const WorkRecordReasonSchema = z.object({
+  reason: z.string().min(1).max(2000),
+});

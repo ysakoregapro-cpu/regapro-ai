@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ShiftDomainError } from "@regapro/work";
+import { ShiftDomainError, WorkDomainError } from "@regapro/work";
 import {
   classifyThrown,
   publicErrorMessage,
@@ -34,6 +34,19 @@ describe("api-errors", () => {
       "FORBIDDEN",
     );
     expect(publicErrorMessage("VALIDATION")).not.toMatch(/shift_requests|staff_id/i);
+  });
+
+  it("maps Work Domain errors without leaking wage or table names", () => {
+    expect(classifyThrown(new WorkDomainError("INVALID_BREAK", "x"))).toBe("VALIDATION");
+    expect(classifyThrown(new WorkDomainError("FORBIDDEN", "x"))).toBe("FORBIDDEN");
+    expect(classifyThrown(new WorkDomainError("TERM_OVERLAP", "x"))).toBe("CONFLICT");
+    expect(classifyThrown(new WorkDomainError("LOCKED_IMMUTABLE", "x"))).toBe("CONFLICT");
+    expect(classifyThrown(new Error("WORK_FORBIDDEN: work_record.submit required"))).toBe(
+      "FORBIDDEN",
+    );
+    expect(publicErrorMessage("VALIDATION")).not.toMatch(
+      /employment_terms|hourly_wage|work_records/i,
+    );
   });
 
   it("does not surface DB internals in public messages", () => {

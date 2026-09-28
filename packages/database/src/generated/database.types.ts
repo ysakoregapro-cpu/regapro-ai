@@ -983,6 +983,83 @@ export type Database = {
           },
         ]
       }
+      employment_terms: {
+        Row: {
+          active_range: unknown
+          created_at: string
+          created_by_staff_id: string
+          effective_from: string
+          effective_to: string | null
+          hourly_wage_yen: number
+          id: string
+          org_id: string
+          revoke_reason: string | null
+          revoked_at: string | null
+          revoked_by_staff_id: string | null
+          staff_id: string
+          updated_at: string
+        }
+        Insert: {
+          active_range?: unknown
+          created_at?: string
+          created_by_staff_id: string
+          effective_from: string
+          effective_to?: string | null
+          hourly_wage_yen: number
+          id?: string
+          org_id: string
+          revoke_reason?: string | null
+          revoked_at?: string | null
+          revoked_by_staff_id?: string | null
+          staff_id: string
+          updated_at?: string
+        }
+        Update: {
+          active_range?: unknown
+          created_at?: string
+          created_by_staff_id?: string
+          effective_from?: string
+          effective_to?: string | null
+          hourly_wage_yen?: number
+          id?: string
+          org_id?: string
+          revoke_reason?: string | null
+          revoked_at?: string | null
+          revoked_by_staff_id?: string | null
+          staff_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employment_terms_created_by_staff_id_fkey"
+            columns: ["created_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "employment_terms_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employment_terms_revoked_by_staff_id_fkey"
+            columns: ["revoked_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "employment_terms_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+        ]
+      }
       file_objects: {
         Row: {
           bucket: string
@@ -4569,6 +4646,211 @@ export type Database = {
           },
         ]
       }
+      work_record_revisions: {
+        Row: {
+          actor_staff_id: string
+          after_snapshot: Json
+          before_snapshot: Json | null
+          created_at: string
+          event_type: string
+          id: string
+          org_id: string
+          reason: string | null
+          revision_no: number
+          work_record_id: string
+        }
+        Insert: {
+          actor_staff_id: string
+          after_snapshot: Json
+          before_snapshot?: Json | null
+          created_at?: string
+          event_type: string
+          id?: string
+          org_id: string
+          reason?: string | null
+          revision_no: number
+          work_record_id: string
+        }
+        Update: {
+          actor_staff_id?: string
+          after_snapshot?: Json
+          before_snapshot?: Json | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          org_id?: string
+          reason?: string | null
+          revision_no?: number
+          work_record_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_record_revisions_actor_staff_id_fkey"
+            columns: ["actor_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "work_record_revisions_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_record_revisions_work_record_id_fkey"
+            columns: ["work_record_id"]
+            isOneToOne: false
+            referencedRelation: "work_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_records: {
+        Row: {
+          assignment_external_ref: string | null
+          assignment_source: string | null
+          break_minutes: number
+          confirmed_at: string | null
+          confirmed_by_staff_id: string | null
+          created_at: string
+          created_by_staff_id: string
+          employment_term_id: string | null
+          end_day_offset: number
+          end_time: string
+          hourly_wage_snapshot_yen: number | null
+          id: string
+          org_id: string
+          source_shift_id: string | null
+          staff_id: string
+          start_time: string
+          status: string
+          transport_fee_yen: number
+          updated_at: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by_staff_id: string | null
+          work_date: string
+          work_location_id: string | null
+          work_range: unknown
+          worked_minutes: number | null
+        }
+        Insert: {
+          assignment_external_ref?: string | null
+          assignment_source?: string | null
+          break_minutes?: number
+          confirmed_at?: string | null
+          confirmed_by_staff_id?: string | null
+          created_at?: string
+          created_by_staff_id: string
+          employment_term_id?: string | null
+          end_day_offset?: number
+          end_time: string
+          hourly_wage_snapshot_yen?: number | null
+          id?: string
+          org_id: string
+          source_shift_id?: string | null
+          staff_id: string
+          start_time: string
+          status: string
+          transport_fee_yen?: number
+          updated_at?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by_staff_id?: string | null
+          work_date: string
+          work_location_id?: string | null
+          work_range?: unknown
+          worked_minutes?: number | null
+        }
+        Update: {
+          assignment_external_ref?: string | null
+          assignment_source?: string | null
+          break_minutes?: number
+          confirmed_at?: string | null
+          confirmed_by_staff_id?: string | null
+          created_at?: string
+          created_by_staff_id?: string
+          employment_term_id?: string | null
+          end_day_offset?: number
+          end_time?: string
+          hourly_wage_snapshot_yen?: number | null
+          id?: string
+          org_id?: string
+          source_shift_id?: string | null
+          staff_id?: string
+          start_time?: string
+          status?: string
+          transport_fee_yen?: number
+          updated_at?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by_staff_id?: string | null
+          work_date?: string
+          work_location_id?: string | null
+          work_range?: unknown
+          worked_minutes?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_records_confirmed_by_staff_id_fkey"
+            columns: ["confirmed_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "work_records_created_by_staff_id_fkey"
+            columns: ["created_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "work_records_employment_term_id_fkey"
+            columns: ["employment_term_id"]
+            isOneToOne: false
+            referencedRelation: "employment_terms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_records_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_records_source_shift_id_fkey"
+            columns: ["source_shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_records_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "work_records_voided_by_staff_id_fkey"
+            columns: ["voided_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["staff_id"]
+          },
+          {
+            foreignKeyName: "work_records_work_location_id_fkey"
+            columns: ["work_location_id"]
+            isOneToOne: false
+            referencedRelation: "work_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -4630,6 +4912,73 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      confirm_work_record: {
+        Args: { p_work_record_id: string }
+        Returns: {
+          assignment_external_ref: string | null
+          assignment_source: string | null
+          break_minutes: number
+          confirmed_at: string | null
+          confirmed_by_staff_id: string | null
+          created_at: string
+          created_by_staff_id: string
+          employment_term_id: string | null
+          end_day_offset: number
+          end_time: string
+          hourly_wage_snapshot_yen: number | null
+          id: string
+          org_id: string
+          source_shift_id: string | null
+          staff_id: string
+          start_time: string
+          status: string
+          transport_fee_yen: number
+          updated_at: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by_staff_id: string | null
+          work_date: string
+          work_location_id: string | null
+          work_range: unknown
+          worked_minutes: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "work_records"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_employment_term: {
+        Args: {
+          p_close_open_ended?: boolean
+          p_effective_from: string
+          p_effective_to?: string
+          p_hourly_wage_yen: number
+          p_staff_id: string
+        }
+        Returns: {
+          active_range: unknown
+          created_at: string
+          created_by_staff_id: string
+          effective_from: string
+          effective_to: string | null
+          hourly_wage_yen: number
+          id: string
+          org_id: string
+          revoke_reason: string | null
+          revoked_at: string | null
+          revoked_by_staff_id: string | null
+          staff_id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "employment_terms"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_or_replace_shift_request_draft: {
         Args: {
           p_dates?: Json
@@ -4655,6 +5004,56 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "shift_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_or_update_work_record_draft: {
+        Args: {
+          p_assignment_external_ref?: string
+          p_assignment_source?: string
+          p_break_minutes?: number
+          p_end_day_offset?: number
+          p_end_time?: string
+          p_source_shift_id?: string
+          p_staff_id?: string
+          p_start_time?: string
+          p_transport_fee_yen?: number
+          p_work_date?: string
+          p_work_location_id?: string
+          p_work_record_id?: string
+        }
+        Returns: {
+          assignment_external_ref: string | null
+          assignment_source: string | null
+          break_minutes: number
+          confirmed_at: string | null
+          confirmed_by_staff_id: string | null
+          created_at: string
+          created_by_staff_id: string
+          employment_term_id: string | null
+          end_day_offset: number
+          end_time: string
+          hourly_wage_snapshot_yen: number | null
+          id: string
+          org_id: string
+          source_shift_id: string | null
+          staff_id: string
+          start_time: string
+          status: string
+          transport_fee_yen: number
+          updated_at: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by_staff_id: string | null
+          work_date: string
+          work_location_id: string | null
+          work_range: unknown
+          worked_minutes: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "work_records"
           isOneToOne: true
           isSetofReturn: false
         }
@@ -4690,6 +5089,20 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      regapro_append_work_record_revision: {
+        Args: {
+          p_actor: string
+          p_before: Json
+          p_event: string
+          p_reason: string
+          p_row: Database["public"]["Tables"]["work_records"]["Row"]
+        }
+        Returns: undefined
+      }
+      regapro_assert_staff_same_org: {
+        Args: { p_label: string; p_org_id: string; p_staff_id: string }
+        Returns: undefined
       }
       regapro_backfill_staff_from_auth: {
         Args: {
@@ -4855,6 +5268,10 @@ export type Database = {
         Args: { p_org_id: string }
         Returns: boolean
       }
+      regapro_has_any_work_record_permission: {
+        Args: { p_org_id: string }
+        Returns: boolean
+      }
       regapro_has_conversation_audit_access: {
         Args: { p_org_id: string }
         Returns: boolean
@@ -4921,12 +5338,25 @@ export type Database = {
         }[]
       }
       regapro_level_to_int: { Args: { p_level: string }; Returns: number }
+      regapro_lock_employment_term_scope: {
+        Args: { p_org_id: string; p_staff_id: string }
+        Returns: undefined
+      }
       regapro_membership_ai_permissions: {
         Args: { p_org_id: string; p_user_id: string }
         Returns: string[]
       }
       regapro_next_staff_no: { Args: { p_org_id: string }; Returns: string }
       regapro_shift_rpc_active: { Args: never; Returns: boolean }
+      regapro_shift_work_acl_privileges: {
+        Args: never
+        Returns: {
+          can_execute: boolean
+          function_identity: string
+          grantee: string
+          kind: string
+        }[]
+      }
       regapro_staff_belongs_to_org: {
         Args: { p_org_id: string }
         Returns: boolean
@@ -4939,6 +5369,11 @@ export type Database = {
         Args: { p_org_id: string; p_staff_id: string }
         Returns: string[]
       }
+      regapro_work_record_snapshot: {
+        Args: { p_row: Database["public"]["Tables"]["work_records"]["Row"] }
+        Returns: Json
+      }
+      regapro_work_rpc_active: { Args: never; Returns: boolean }
       regapro_write_shift_audit: {
         Args: {
           p_action: string
@@ -4950,6 +5385,79 @@ export type Database = {
           p_subject_staff_id: string
         }
         Returns: undefined
+      }
+      regapro_write_work_audit: {
+        Args: {
+          p_action: string
+          p_actor_staff_id: string
+          p_metadata?: Json
+          p_org_id: string
+          p_resource_id: string
+          p_resource_type: string
+          p_subject_staff_id: string
+        }
+        Returns: undefined
+      }
+      reopen_work_record: {
+        Args: { p_reason: string; p_work_record_id: string }
+        Returns: {
+          assignment_external_ref: string | null
+          assignment_source: string | null
+          break_minutes: number
+          confirmed_at: string | null
+          confirmed_by_staff_id: string | null
+          created_at: string
+          created_by_staff_id: string
+          employment_term_id: string | null
+          end_day_offset: number
+          end_time: string
+          hourly_wage_snapshot_yen: number | null
+          id: string
+          org_id: string
+          source_shift_id: string | null
+          staff_id: string
+          start_time: string
+          status: string
+          transport_fee_yen: number
+          updated_at: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by_staff_id: string | null
+          work_date: string
+          work_location_id: string | null
+          work_range: unknown
+          worked_minutes: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "work_records"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      revoke_employment_term: {
+        Args: { p_reason: string; p_term_id: string }
+        Returns: {
+          active_range: unknown
+          created_at: string
+          created_by_staff_id: string
+          effective_from: string
+          effective_to: string | null
+          hourly_wage_yen: number
+          id: string
+          org_id: string
+          revoke_reason: string | null
+          revoked_at: string | null
+          revoked_by_staff_id: string | null
+          staff_id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "employment_terms"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
@@ -4973,6 +5481,43 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "shift_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      void_work_record: {
+        Args: { p_reason: string; p_work_record_id: string }
+        Returns: {
+          assignment_external_ref: string | null
+          assignment_source: string | null
+          break_minutes: number
+          confirmed_at: string | null
+          confirmed_by_staff_id: string | null
+          created_at: string
+          created_by_staff_id: string
+          employment_term_id: string | null
+          end_day_offset: number
+          end_time: string
+          hourly_wage_snapshot_yen: number | null
+          id: string
+          org_id: string
+          source_shift_id: string | null
+          staff_id: string
+          start_time: string
+          status: string
+          transport_fee_yen: number
+          updated_at: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by_staff_id: string | null
+          work_date: string
+          work_location_id: string | null
+          work_range: unknown
+          worked_minutes: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "work_records"
           isOneToOne: true
           isSetofReturn: false
         }
