@@ -7,10 +7,14 @@ import type { PlatformPermission } from "@regapro/shared";
  */
 
 export const PLATFORM_ROLE_TEMPLATES = {
-  platform_weekly_pay_submitter: ["weekly_pay.submit"],
+  platform_weekly_pay_submitter: ["weekly_pay.submit", "work_record.view_own"],
   platform_weekly_pay_reviewer: ["weekly_pay.review"],
   platform_weekly_pay_payer: ["weekly_pay.pay"],
-  platform_weekly_pay_manager: ["weekly_pay.submit", "weekly_pay.manage"],
+  platform_weekly_pay_manager: [
+    "weekly_pay.submit",
+    "weekly_pay.manage",
+    "work_record.view_own",
+  ],
   platform_weekly_pay_policy_manager: ["weekly_pay.policy_manage"],
   platform_shift_user: ["shift.view_own", "shift.request"],
   platform_shift_manager: ["shift.manage"],

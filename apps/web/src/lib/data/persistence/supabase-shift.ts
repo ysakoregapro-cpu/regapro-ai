@@ -3,6 +3,7 @@ import {
   ShiftDomainError,
   type CreateShiftInput,
   type CreateShiftRequestDraftInput,
+  type CreateWorkLocationInput,
   type Shift,
   type ShiftEndDayOffset,
   type ShiftPreferenceType,
@@ -13,6 +14,7 @@ import {
   type ShiftSource,
   type ShiftStatus,
   type ShiftListQuery,
+  type UpdateShiftDraftInput,
   type WorkLocation,
 } from "@regapro/work";
 
@@ -30,14 +32,22 @@ type ShiftQuery = {
   then: Promise<{ data: Record<string, unknown>[] | null; error: RpcError | null }>["then"];
 };
 
+type MutatingQuery = {
+  eq: (column: string, value: string) => MutatingQuery;
+  select: (columns: string) => {
+    single: () => Promise<{ data: Record<string, unknown> | null; error: RpcError | null }>;
+    maybeSingle: () => Promise<{
+      data: Record<string, unknown> | null;
+      error: RpcError | null;
+    }>;
+  };
+};
+
 type ShiftClient = {
   from: (table: string) => {
     select: (columns: string) => ShiftQuery;
-    insert: (row: Record<string, unknown>) => {
-      select: (columns: string) => {
-        single: () => Promise<{ data: Record<string, unknown> | null; error: RpcError | null }>;
-      };
-    };
+    insert: (row: Record<string, unknown>) => MutatingQuery;
+    update: (row: Record<string, unknown>) => MutatingQuery;
   };
   rpc: (
     fn: string,
@@ -194,6 +204,22 @@ export function createSupabaseShiftPorts(client: ShiftClient): ShiftPorts {
         if (error) throwFromRpc(error);
         return (data ?? []).map(mapLocation);
       },
+      async create(orgId, input: CreateWorkLocationInput) {
+        const { data, error } = await client
+          .from("work_locations")
+          .insert({
+            org_id: orgId,
+            code: input.code,
+            name: input.name,
+            address_text: input.addressText ?? null,
+            is_active: true,
+          })
+          .select("*")
+          .single();
+        if (error) throwFromRpc(error);
+        if (!data) throw new ShiftDomainError("NOT_FOUND", "location");
+        return mapLocation(data);
+      },
     },
     requests: {
       async getById(orgId, id) {
@@ -303,6 +329,27 @@ export function createSupabaseShiftPorts(client: ShiftClient): ShiftPorts {
           .single();
         if (error) throwFromRpc(error);
         if (!data) throw new ShiftDomainError("NOT_FOUND", "shift");
+        return mapShift(data);
+      },
+      async updateDraft(orgId, shiftId, input: UpdateShiftDraftInput) {
+        const patch: Record<string, unknown> = {};
+        if (input.workDate !== undefined) patch.work_date = input.workDate;
+        if (input.startTime !== undefined) patch.start_time = input.startTime;
+        if (input.endTime !== undefined) patch.end_time = input.endTime;
+        if (input.endDayOffset !== undefined) patch.end_day_offset = input.endDayOffset;
+        if (input.workLocationId !== undefined) patch.work_location_id = input.workLocationId;
+        if (input.note !== undefined) patch.note = input.note;
+        if (input.preReportUrl !== undefined) patch.pre_report_url = input.preReportUrl;
+        const { data, error } = await client
+          .from("shifts")
+          .update(patch)
+          .eq("org_id", orgId)
+          .eq("id", shiftId)
+          .eq("status", "draft")
+          .select("*")
+          .maybeSingle();
+        if (error) throwFromRpc(error);
+        if (!data) throw new ShiftDomainError("SHIFT_IMMUTABLE", "draft shift not updatable");
         return mapShift(data);
       },
       async publish(_orgId, shiftId) {

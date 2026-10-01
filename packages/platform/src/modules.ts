@@ -251,7 +251,7 @@ export const MODULE_REGISTRY: readonly ModuleDefinition[] = [
     requiredPermissions: ["shift.view_own", "shift.request", "shift.manage"],
     dashboardVisibility: true,
     mobileVisibility: true,
-    featureState: "planned",
+    featureState: "available",
     order: 64,
   }),
   define({
@@ -266,10 +266,11 @@ export const MODULE_REGISTRY: readonly ModuleDefinition[] = [
       "work_record.view_own",
       "work_record.submit",
       "work_record.manage",
+      "employment_terms.manage",
     ],
     dashboardVisibility: true,
     mobileVisibility: true,
-    featureState: "planned",
+    featureState: "available",
     order: 64.5,
   }),
   define({

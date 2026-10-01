@@ -7,14 +7,18 @@ import {
   cancelShiftRequest as cancelShiftRequestUseCase,
   createDraftShift as createDraftShiftUseCase,
   createShiftRequestDraft as createShiftRequestDraftUseCase,
+  createWorkLocation as createWorkLocationUseCase,
   listShiftRequests as listShiftRequestsUseCase,
   listShifts as listShiftsUseCase,
   listWorkLocations as listWorkLocationsUseCase,
   publishShift as publishShiftUseCase,
   submitShiftRequest as submitShiftRequestUseCase,
+  updateDraftShift as updateDraftShiftUseCase,
   type CreateShiftInput,
   type CreateShiftRequestDraftInput,
+  type CreateWorkLocationInput,
   type ShiftActor,
+  type UpdateShiftDraftInput,
 } from "@regapro/work";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createSupabaseShiftPorts } from "@/lib/data/persistence/supabase-shift";
@@ -44,6 +48,13 @@ async function ports() {
 
 export async function listWorkLocationsForAccess(access: AccessContext) {
   return listWorkLocationsUseCase(await ports(), actorFromAccess(access));
+}
+
+export async function createWorkLocationForAccess(
+  access: AccessContext,
+  input: CreateWorkLocationInput,
+) {
+  return createWorkLocationUseCase(await ports(), actorFromAccess(access), input);
 }
 
 export async function listShiftsForAccess(
@@ -86,6 +97,14 @@ export async function createDraftShiftForAccess(
   input: CreateShiftInput,
 ) {
   return createDraftShiftUseCase(await ports(), actorFromAccess(access), input);
+}
+
+export async function updateDraftShiftForAccess(
+  access: AccessContext,
+  shiftId: string,
+  input: UpdateShiftDraftInput,
+) {
+  return updateDraftShiftUseCase(await ports(), actorFromAccess(access), shiftId, input);
 }
 
 export async function publishShiftForAccess(access: AccessContext, shiftId: string) {

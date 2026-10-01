@@ -41,6 +41,7 @@ describe("weekly pay permission contract", () => {
   it("does not give a submitter review", () => {
     const ctx = makeAccess({ grants: grantsFrom("platform_weekly_pay_submitter") });
     expect(hasPermission(ctx, "weekly_pay.submit")).toBe(true);
+    expect(hasPermission(ctx, "work_record.view_own")).toBe(true);
     expect(hasPermission(ctx, "weekly_pay.review")).toBe(false);
     expect(hasPermission(ctx, "weekly_pay.pay")).toBe(false);
   });
@@ -178,8 +179,8 @@ describe("platform_admin template", () => {
   });
 });
 
-describe("planned work modules stay hidden", () => {
-  it("exposes weekly_pay; keeps shift, work_record, documents, and work planned", () => {
+describe("Phase 7 work modules visibility", () => {
+  it("exposes weekly_pay, shift, work_record; keeps expense/sales/documents/work planned", () => {
     const ctx = makeAccess({
       grants: [
         grant("weekly_pay.submit"),
@@ -196,37 +197,50 @@ describe("planned work modules stay hidden", () => {
         grant("employment_terms.manage"),
         grant("documents.use"),
         grant("documents.manage"),
+        grant("expense.submit"),
+        grant("sales.view_own"),
       ],
     });
 
     expect(getModule("weekly_pay").featureState).toBe("available");
-    expect(getModule("shift").featureState).toBe("planned");
-    expect(getModule("work_record").featureState).toBe("planned");
+    expect(getModule("shift").featureState).toBe("available");
+    expect(getModule("work_record").featureState).toBe("available");
     expect(getModule("documents").featureState).toBe("planned");
+    expect(getModule("expense").featureState).toBe("planned");
+    expect(getModule("sales").featureState).toBe("planned");
     expect(getModule("work").featureState).toBe("planned");
 
     expect(canViewModule(ctx, getModule("weekly_pay"))).toBe(true);
-    expect(canViewModule(ctx, getModule("shift"))).toBe(false);
-    expect(canViewModule(ctx, getModule("work_record"))).toBe(false);
+    expect(canViewModule(ctx, getModule("shift"))).toBe(true);
+    expect(canViewModule(ctx, getModule("work_record"))).toBe(true);
     expect(canViewModule(ctx, getModule("documents"))).toBe(false);
+    expect(canViewModule(ctx, getModule("expense"))).toBe(false);
+    expect(canViewModule(ctx, getModule("sales"))).toBe(false);
     expect(canViewModule(ctx, getModule("work"))).toBe(false);
 
     const ids = visibleModules(ctx, "desktop").map((m) => m.id);
     expect(ids).toContain("weekly_pay");
-    expect(ids).not.toContain("shift");
-    expect(ids).not.toContain("work_record");
+    expect(ids).toContain("shift");
+    expect(ids).toContain("work_record");
     expect(ids).not.toContain("documents");
+    expect(ids).not.toContain("expense");
+    expect(ids).not.toContain("sales");
     expect(ids).not.toContain("work");
 
     const labels = (items: { label: string }[]) => items.map((i) => i.label);
     const nav = buildNavigation(ctx);
-    expect(labels(nav.work)).toContain("週払い");
-    expect(labels(nav.work)).not.toContain("シフト");
-    expect(labels(nav.work)).not.toContain("勤務実績");
+    expect(labels(nav.work)).toEqual(
+      expect.arrayContaining(["週払い", "シフト", "勤務実績"]),
+    );
+    expect(labels(nav.work)).not.toContain("経費");
+    expect(labels(nav.work)).not.toContain("売上");
     expect(labels(nav.work)).not.toContain("書類");
-    expect(labels(buildDashboardShortcuts(ctx))).toContain("週払い");
-    expect(labels(buildMobileNavigation(ctx))).not.toContain("シフト");
-    expect(labels(buildMobileNavigation(ctx))).not.toContain("勤務実績");
+    expect(labels(buildDashboardShortcuts(ctx))).toEqual(
+      expect.arrayContaining(["週払い", "シフト", "勤務実績"]),
+    );
+    expect(labels(buildMobileNavigation(ctx))).toEqual(
+      expect.arrayContaining(["シフト", "勤務実績"]),
+    );
   });
 
   it("uses any-of permissions for weekly_pay when it later becomes available", () => {

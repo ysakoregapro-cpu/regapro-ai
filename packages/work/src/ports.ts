@@ -1,8 +1,10 @@
 import type {
   CreateShiftInput,
   CreateShiftRequestDraftInput,
+  CreateWorkLocationInput,
   Shift,
   ShiftRequest,
+  UpdateShiftDraftInput,
   WorkLocation,
 } from "./types.js";
 
@@ -25,6 +27,7 @@ export type ShiftRequestListQuery = {
 
 export interface WorkLocationRepository {
   listActive(orgId: string): Promise<WorkLocation[]>;
+  create(orgId: string, input: CreateWorkLocationInput): Promise<WorkLocation>;
 }
 
 export interface ShiftRequestRepository {
@@ -43,6 +46,7 @@ export interface ShiftRepository {
   getById(orgId: string, id: string): Promise<Shift | null>;
   list(orgId: string, query: ShiftListQuery): Promise<Shift[]>;
   createDraft(orgId: string, input: CreateShiftInput): Promise<Shift>;
+  updateDraft(orgId: string, shiftId: string, input: UpdateShiftDraftInput): Promise<Shift>;
   publish(orgId: string, shiftId: string): Promise<Shift>;
   cancel(orgId: string, shiftId: string): Promise<Shift>;
 }

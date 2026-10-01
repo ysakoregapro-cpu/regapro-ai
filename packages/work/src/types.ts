@@ -132,6 +132,22 @@ export type CreateShiftInput = {
   preReportUrl?: string | null;
 };
 
+export type UpdateShiftDraftInput = {
+  workDate?: IsoDate;
+  startTime?: IsoTime | null;
+  endTime?: IsoTime | null;
+  endDayOffset?: ShiftEndDayOffset;
+  workLocationId?: string | null;
+  note?: string | null;
+  preReportUrl?: string | null;
+};
+
+export type CreateWorkLocationInput = {
+  code: string;
+  name: string;
+  addressText?: string | null;
+};
+
 export const SHIFT_AUDIT_ACTIONS = [
   "shift_request_submitted",
   "shift_request_superseded",

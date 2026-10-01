@@ -34,6 +34,22 @@ export const CreateShiftSchema = z.object({
   preReportUrl: z.string().max(2000).nullable().optional(),
 });
 
+export const UpdateShiftDraftSchema = z.object({
+  workDate: isoDate.optional(),
+  startTime: isoTime.nullable().optional(),
+  endTime: isoTime.nullable().optional(),
+  endDayOffset: z.union([z.literal(0), z.literal(1)]).optional(),
+  workLocationId: z.string().uuid().nullable().optional(),
+  note: z.string().max(2000).nullable().optional(),
+  preReportUrl: z.string().max(2000).nullable().optional(),
+});
+
+export const CreateWorkLocationSchema = z.object({
+  code: z.string().min(1).max(64),
+  name: z.string().min(1).max(200),
+  addressText: z.string().max(2000).nullable().optional(),
+});
+
 export const ShiftListQuerySchema = z.object({
   from: isoDate.optional(),
   to: isoDate.optional(),

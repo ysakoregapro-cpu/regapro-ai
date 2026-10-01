@@ -4,8 +4,10 @@ import type { ShiftPorts } from "./ports.js";
 import type {
   CreateShiftInput,
   CreateShiftRequestDraftInput,
+  CreateWorkLocationInput,
   Shift,
   ShiftRequest,
+  UpdateShiftDraftInput,
   WorkLocation,
 } from "./types.js";
 import {
@@ -58,6 +60,27 @@ export async function listWorkLocations(
     throw new ShiftDomainError("FORBIDDEN", "shift permission required");
   }
   return ports.locations.listActive(actor.orgId);
+}
+
+export async function createWorkLocation(
+  ports: ShiftPorts,
+  actor: ShiftActor,
+  input: CreateWorkLocationInput,
+): Promise<WorkLocation> {
+  requireStaff(actor);
+  if (!canManageShifts(actor)) {
+    throw new ShiftDomainError("FORBIDDEN", "shift.manage required");
+  }
+  const code = input.code.trim();
+  const name = input.name.trim();
+  if (!code || !name) {
+    throw new ShiftDomainError("INVALID_PERIOD", "location code and name are required");
+  }
+  return ports.locations.create(actor.orgId, {
+    code,
+    name,
+    addressText: input.addressText ?? null,
+  });
 }
 
 export async function listShifts(
@@ -158,6 +181,44 @@ export async function createDraftShift(
     endDayOffset,
     source,
     externalRef,
+    preReportUrl,
+  });
+}
+
+export async function updateDraftShift(
+  ports: ShiftPorts,
+  actor: ShiftActor,
+  shiftId: string,
+  input: UpdateShiftDraftInput,
+): Promise<Shift> {
+  requireStaff(actor);
+  if (!canManageShifts(actor)) {
+    throw new ShiftDomainError("FORBIDDEN", "shift.manage required");
+  }
+  const existing = await ports.shifts.getById(actor.orgId, shiftId);
+  if (!existing) {
+    throw new ShiftDomainError("NOT_FOUND", "shift");
+  }
+  if (existing.status !== "draft") {
+    throw new ShiftDomainError("SHIFT_IMMUTABLE", "only draft shifts may be edited");
+  }
+  const startTime = input.startTime !== undefined ? input.startTime : existing.startTime;
+  const endTime = input.endTime !== undefined ? input.endTime : existing.endTime;
+  const endDayOffset =
+    input.endDayOffset !== undefined ? input.endDayOffset : existing.endDayOffset;
+  const times = assertShiftSchedule(startTime, endTime, endDayOffset);
+  const preReportUrl =
+    input.preReportUrl !== undefined
+      ? assertPreReportUrl(input.preReportUrl)
+      : existing.preReportUrl;
+  return ports.shifts.updateDraft(actor.orgId, shiftId, {
+    workDate: input.workDate ?? existing.workDate,
+    startTime: times.startTime,
+    endTime: times.endTime,
+    endDayOffset: times.endDayOffset,
+    workLocationId:
+      input.workLocationId !== undefined ? input.workLocationId : existing.workLocationId,
+    note: input.note !== undefined ? input.note : existing.note,
     preReportUrl,
   });
 }

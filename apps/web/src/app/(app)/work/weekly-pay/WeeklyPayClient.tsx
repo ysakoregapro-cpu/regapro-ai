@@ -72,6 +72,16 @@ type BankAccount = {
   status: string;
 };
 
+type ConfirmedRecord = {
+  id: string;
+  workDate: string;
+  startTime: string;
+  endTime: string;
+  workedMinutes: number;
+  status: string;
+  hourlyWageSnapshotYen: number | null;
+};
+
 type Tab =
   | "mine"
   | "bank"
@@ -138,6 +148,8 @@ export default function WeeklyPayClient() {
     accountNumber: "",
     accountHolderKana: "",
   });
+  const [confirmedRecords, setConfirmedRecords] = useState<ConfirmedRecord[]>([]);
+  const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -195,6 +207,17 @@ export default function WeeklyPayClient() {
     setApps(data.applications ?? []);
   }, []);
 
+  const loadConfirmedRecords = useCallback(async () => {
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tokyo" });
+    const [y, m, d] = today.split("-").map(Number);
+    const fromDt = new Date(Date.UTC(y, m - 1, d - 21));
+    const from = fromDt.toISOString().slice(0, 10);
+    const data = await api<{ records: ConfirmedRecord[] }>(
+      `/api/work/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(today)}`,
+    );
+    setConfirmedRecords((data.records ?? []).filter((r) => r.status === "confirmed"));
+  }, []);
+
   const loadBatches = useCallback(async () => {
     const data = await api<{ batches: Batch[] }>("/api/work/weekly-pay/payment-batches");
     setBatches(data.batches ?? []);
@@ -226,7 +249,10 @@ export default function WeeklyPayClient() {
     let cancelled = false;
     const run = async () => {
       try {
-        if (tab === "mine") await loadApps();
+        if (tab === "mine") {
+          await loadApps();
+          await loadConfirmedRecords();
+        }
         if (tab === "review") await loadApps("submitted");
         if (tab === "approved") await loadApps("approved");
         if (tab === "batches") await loadBatches();
@@ -244,7 +270,16 @@ export default function WeeklyPayClient() {
     return () => {
       cancelled = true;
     };
-  }, [tab, perms, loadApps, loadBatches, loadTransferor, loadLedger, loadBanks]);
+  }, [
+    tab,
+    perms,
+    loadApps,
+    loadBatches,
+    loadTransferor,
+    loadLedger,
+    loadBanks,
+    loadConfirmedRecords,
+  ]);
 
   const selectedTotal = useMemo(
     () =>
@@ -261,6 +296,25 @@ export default function WeeklyPayClient() {
       await loadApps();
     } catch (e) {
       setError(e instanceof Error ? e.message : "提出に失敗しました");
+    }
+  }
+
+  async function createDraftFromRecords() {
+    if (selectedRecords.size === 0) {
+      setError("確定済み勤務実績を選択してください");
+      return;
+    }
+    setError(null);
+    try {
+      await api("/api/work/weekly-pay/applications", {
+        method: "POST",
+        body: JSON.stringify({ workRecordIds: [...selectedRecords] }),
+      });
+      setSelectedRecords(new Set());
+      await loadApps();
+      await loadConfirmedRecords();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "draft 作成に失敗しました");
     }
   }
 
@@ -466,26 +520,78 @@ export default function WeeklyPayClient() {
       ) : null}
 
       {tab === "mine" ? (
-        <section>
-          <p className="mb-3 text-[12px] text-[var(--color-text)]/70">
-            本人の申請一覧。draft は提出、差戻し後は再申請できます。支払状態は台帳タブでも確認できます。
-          </p>
-          <AppTable
-            apps={apps}
-            actions={(a) =>
-              a.status === "draft" || a.status === "returned" ? (
-                <button
-                  type="button"
-                  className="text-[var(--color-accent)] underline"
-                  onClick={() => void submitApp(a.id)}
-                >
-                  提出
-                </button>
-              ) : (
-                <span className="text-[var(--color-text)]/60">{a.status}</span>
-              )
-            }
-          />
+        <section className="space-y-6">
+          <div>
+            <p className="mb-3 text-[12px] text-[var(--color-text)]/70">
+              確定済み勤務実績を選んで週払い draft を作成します。口座登録が必要です。勤務実績の作成・確定は
+              <a href="/work/records" className="text-[var(--color-accent)] underline">
+                勤務実績
+              </a>
+              から行います。
+            </p>
+            <ul className="mb-3 divide-y divide-[var(--color-border)] text-[13px]">
+              {confirmedRecords.map((r) => {
+                const checked = selectedRecords.has(r.id);
+                return (
+                  <li key={r.id} className="flex items-start gap-2 py-2">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        const next = new Set(selectedRecords);
+                        if (checked) next.delete(r.id);
+                        else next.add(r.id);
+                        setSelectedRecords(next);
+                      }}
+                      className="mt-1"
+                    />
+                    <div>
+                      <div className="font-medium">{r.workDate}</div>
+                      <div className="text-[12px] text-[var(--color-text)]/70">
+                        {r.startTime.slice(0, 5)}〜{r.endTime.slice(0, 5)} / {r.workedMinutes}分
+                        {r.hourlyWageSnapshotYen != null
+                          ? ` / 時給snapshot ${r.hourlyWageSnapshotYen}円`
+                          : ""}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+              {confirmedRecords.length === 0 ? (
+                <li className="py-4 text-[var(--color-text)]/60">
+                  選択可能な確定済み勤務実績がありません。
+                </li>
+              ) : null}
+            </ul>
+            <button
+              type="button"
+              onClick={() => void createDraftFromRecords()}
+              className="rounded-md bg-[var(--color-accent)] px-3 py-2 text-[13px] text-white"
+            >
+              選択から draft 作成
+            </button>
+          </div>
+          <div>
+            <p className="mb-3 text-[12px] text-[var(--color-text)]/70">
+              本人の申請一覧。draft は提出、差戻し後は再申請できます。支払状態は台帳タブでも確認できます。
+            </p>
+            <AppTable
+              apps={apps}
+              actions={(a) =>
+                a.status === "draft" || a.status === "returned" ? (
+                  <button
+                    type="button"
+                    className="text-[var(--color-accent)] underline"
+                    onClick={() => void submitApp(a.id)}
+                  >
+                    提出
+                  </button>
+                ) : (
+                  <span className="text-[var(--color-text)]/60">{a.status}</span>
+                )
+              }
+            />
+          </div>
         </section>
       ) : null}
 
