@@ -86,3 +86,31 @@ export const WorkRecordListQuerySchema = z.object({
 export const WorkRecordReasonSchema = z.object({
   reason: z.string().min(1).max(2000),
 });
+
+export const CreateWeeklyApplicationDraftSchema = z.object({
+  workRecordIds: z.array(z.string().uuid()).min(1),
+  staffId: z.string().uuid().optional(),
+});
+
+export const WeeklyApplicationListQuerySchema = z.object({
+  fromWeekStart: isoDate.optional(),
+  toWeekStart: isoDate.optional(),
+  staffId: z.string().uuid().optional(),
+  status: z.enum(["draft", "submitted", "returned", "approved"]).optional(),
+});
+
+export const ReturnWeeklyApplicationSchema = z.object({
+  reason: z.string().min(3).max(1000),
+});
+
+export const UpsertWeeklyPayPolicySchema = z.object({
+  advanceRateBps: z.number().int().positive().max(10000),
+  dailyCapMinutes: z.number().int().positive(),
+  dailyCapScope: z.enum(["per_work_record", "per_calendar_day"]),
+  roundingUnitYen: z.number().int().positive(),
+  includeTransportFee: z.boolean(),
+  weekStartIsoDow: z.literal(1).default(1),
+  paymentOffsetDays: z.number().int().positive(),
+  effectiveFrom: isoDate,
+  effectiveTo: isoDate.nullable().optional(),
+});

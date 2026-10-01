@@ -43,6 +43,12 @@ import {
 } from "./cases-work-record.mjs";
 import { runShiftWorkAclCases } from "./cases-rpc-acl.mjs";
 import { runLegacyAclCases } from "./cases-legacy-acl.mjs";
+import {
+  cleanupWeeklyPayFixtures,
+  runWeeklyPayCases,
+  setupWeeklyPayFixtures,
+  weeklyPayTablesReady,
+} from "./cases-weekly-pay.mjs";
 
 async function main() {
   loadEnvFiles();
@@ -60,6 +66,7 @@ async function main() {
   let platform = null;
   let shift = null;
   let workRecord = null;
+  let weeklyPay = null;
   try {
     console.log("Setting up fixtures (service_role / admin auth)...");
     fx = await setupFixtures({ ...env, runId });
@@ -108,6 +115,19 @@ async function main() {
 
       console.log("\nChecking legacy database ACL hardening...");
       await runLegacyAclCases(reporter, fx, env);
+
+      const weeklyReady = await weeklyPayTablesReady(fx.admin);
+      if (weeklyReady.ready && workReady.ready) {
+        console.log("\nSetting up weekly pay fixtures...");
+        weeklyPay = await setupWeeklyPayFixtures(fx, platform, workRecord);
+        console.log("\nChecking Phase 4 weekly pay application...");
+        await runWeeklyPayCases(reporter, fx, weeklyPay, env);
+      } else if (!weeklyReady.ready) {
+        reporter.skip(
+          "weekly pay domain cases",
+          `table ${weeklyReady.missing} not present — apply supabase/migrations/20261001024933_weekly_pay_application_foundation.sql first`,
+        );
+      }
     } else {
       reporter.skip(
         "integrated app foundation cases",
@@ -121,6 +141,7 @@ async function main() {
     if (fx && !keep) {
       console.log("\nCleaning fixture data...");
       try {
+        await cleanupWeeklyPayFixtures(fx.admin, weeklyPay);
         await cleanupWorkRecordFixtures(fx, workRecord);
         await cleanupShiftFixtures(fx, shift);
         await cleanupPlatformFixtures(fx, platform);

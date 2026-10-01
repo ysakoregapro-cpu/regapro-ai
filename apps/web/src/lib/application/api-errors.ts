@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { isShiftDomainError, isWorkDomainError } from "@regapro/work";
+import {
+  isShiftDomainError,
+  isWeeklyPayDomainError,
+  isWorkDomainError,
+} from "@regapro/work";
 
 /** User-facing failure codes — never include PostgREST/SQL internals. */
 export type AppErrorCode =
@@ -59,28 +63,45 @@ export function classifyThrown(err: unknown): AppErrorCode {
         return "VALIDATION";
     }
   }
+  if (isWeeklyPayDomainError(err)) {
+    switch (err.code) {
+      case "FORBIDDEN":
+      case "SELF_REVIEW":
+        return "FORBIDDEN";
+      case "NOT_FOUND":
+        return "NOT_FOUND";
+      case "CONFLICT":
+      case "DUPLICATE_WEEK":
+      case "ALREADY_APPLIED":
+      case "INVALID_TRANSITION":
+      case "WEEK_CUTOFF":
+        return "CONFLICT";
+      default:
+        return "VALIDATION";
+    }
+  }
   const msg = err instanceof Error ? err.message : String(err);
   if (/UNAUTHENTICATED|not authenticated|JWT|session/i.test(msg)) {
     return "UNAUTHENTICATED";
   }
   if (
-    /row-level security|permission denied|42501|FORBIDDEN|SHIFT_FORBIDDEN|WORK_FORBIDDEN|NO_ORGANIZATION|NO_PLATFORM_IDENTITY|STAFF_INACTIVE|UNAUTHORIZED_REVIEW|UNAUTHORIZED_KNOWLEDGE/i.test(
+    /row-level security|permission denied|42501|FORBIDDEN|SHIFT_FORBIDDEN|WORK_FORBIDDEN|WEEKLY_PAY_FORBIDDEN|WEEKLY_PAY_SELF_REVIEW|NO_ORGANIZATION|NO_PLATFORM_IDENTITY|STAFF_INACTIVE|UNAUTHORIZED_REVIEW|UNAUTHORIZED_KNOWLEDGE/i.test(
       msg,
     )
   ) {
     return "FORBIDDEN";
   }
-  if (/SHIFT_NOT_FOUND|WORK_NOT_FOUND|not found|PGRST116|404/i.test(msg)) {
+  if (/SHIFT_NOT_FOUND|WORK_NOT_FOUND|WEEKLY_PAY_NOT_FOUND|not found|PGRST116|404/i.test(msg)) {
     return "NOT_FOUND";
   }
   if (
-    /SHIFT_CONFLICT|SHIFT_INVALID_TRANSITION|SHIFT_REQUEST_IMMUTABLE|SHIFT_IMMUTABLE|WORK_CONFLICT|WORK_INVALID_TRANSITION|WORK_RECORD_IMMUTABLE|WORK_LOCKED_IMMUTABLE|WORK_TERM_OVERLAP|23P01|23505/i.test(
+    /SHIFT_CONFLICT|SHIFT_INVALID_TRANSITION|SHIFT_REQUEST_IMMUTABLE|SHIFT_IMMUTABLE|WORK_CONFLICT|WORK_INVALID_TRANSITION|WORK_RECORD_IMMUTABLE|WORK_LOCKED_IMMUTABLE|WORK_TERM_OVERLAP|WEEKLY_PAY_CONFLICT|WEEKLY_PAY_INVALID_TRANSITION|WEEKLY_PAY_DUPLICATE_WEEK|WEEKLY_PAY_ALREADY_APPLIED|WEEKLY_PAY_WEEK_CUTOFF|23P01|23505/i.test(
       msg,
     )
   ) {
     return "CONFLICT";
   }
-  if (/SHIFT_[A-Z_]+|WORK_[A-Z_]+/i.test(msg)) {
+  if (/SHIFT_[A-Z_]+|WORK_[A-Z_]+|WEEKLY_PAY_[A-Z_]+/i.test(msg)) {
     return "VALIDATION";
   }
   return "INTERNAL";
