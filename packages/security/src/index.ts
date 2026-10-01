@@ -577,3 +577,5 @@ export function rlsDocOrgScopedAccess(
 ): boolean {
   return userOrgIds.includes(rowOrgId);
 }
+
+export * from "./database-acl.js";

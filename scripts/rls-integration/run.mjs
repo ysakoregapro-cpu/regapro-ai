@@ -42,6 +42,7 @@ import {
   workRecordTablesReady,
 } from "./cases-work-record.mjs";
 import { runShiftWorkAclCases } from "./cases-rpc-acl.mjs";
+import { runLegacyAclCases } from "./cases-legacy-acl.mjs";
 
 async function main() {
   loadEnvFiles();
@@ -104,6 +105,9 @@ async function main() {
         console.log("\nChecking Phase 2/3 RPC ACL hardening...");
         await runShiftWorkAclCases(reporter, fx, env);
       }
+
+      console.log("\nChecking legacy database ACL hardening...");
+      await runLegacyAclCases(reporter, fx, env);
     } else {
       reporter.skip(
         "integrated app foundation cases",
