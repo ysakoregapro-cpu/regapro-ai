@@ -21,7 +21,7 @@ import {
   listWeeklyPayPolicies as listWeeklyPayPoliciesUseCase,
   recordPaymentBatchBankSubmission as recordPaymentBatchBankSubmissionUseCase,
   recordPaymentBatchItemResults as recordPaymentBatchItemResultsUseCase,
-  resolveUnknownPaymentItem as resolveUnknownPaymentItemUseCase,
+  releasePaymentItemForResend as releasePaymentItemForResendUseCase,
   returnWeeklyApplication as returnWeeklyApplicationUseCase,
   submitWeeklyApplication as submitWeeklyApplicationUseCase,
   upsertBankAccount as upsertBankAccountUseCase,
@@ -235,18 +235,20 @@ export async function recordItemResultsForAccess(
   );
 }
 
-export async function resolveUnknownItemForAccess(
+export async function releaseItemForResendForAccess(
   access: AccessContext,
   itemId: string,
-  outcome: "failed" | "cancelled",
-  reason?: string | null,
+  input: {
+    bankConfirmationKind: "not_executed" | "failed_at_bank";
+    bankTransactionRef: string;
+    evidenceNote: string;
+  },
 ) {
-  return resolveUnknownPaymentItemUseCase(
+  return releasePaymentItemForResendUseCase(
     await ports(),
     actorFromAccess(access),
     itemId,
-    outcome,
-    reason,
+    input,
   );
 }
 

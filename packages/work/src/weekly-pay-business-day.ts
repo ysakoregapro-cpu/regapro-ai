@@ -1,7 +1,12 @@
 /**
  * Japanese bank business-day helpers for SMTB transfer designation dates.
+ * Aligned with Docomo SMTB FAQ: weekends, national holidays, and Dec 31–Jan 3.
  * Does not auto-shift application payment_date — only validates bank transfer dates.
+ * Years outside HOLIDAY_COVERAGE_YEARS fail closed (not treated as business days).
  */
+
+/** Verified holiday calendar years (must match japanese_bank_holiday_coverage). */
+export const HOLIDAY_COVERAGE_YEARS = new Set([2025, 2026, 2027]);
 
 const FIXED_HOLIDAYS = new Set<string>([
   "2025-01-01", "2025-01-13", "2025-02-11", "2025-02-23", "2025-02-24",
@@ -28,10 +33,22 @@ function isoDow(isoDate: string): number {
   return js === 0 ? 7 : js;
 }
 
+/** Docomo SMTB: 12/31–1/3 are bank holidays every year. */
+export function isJapaneseBankYearEndClosure(isoDate: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return false;
+  const [, mm, dd] = isoDate.split("-");
+  const month = Number(mm);
+  const day = Number(dd);
+  return (month === 12 && day === 31) || (month === 1 && day >= 1 && day <= 3);
+}
+
 export function isJapaneseBankBusinessDay(isoDate: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return false;
+  const year = Number(isoDate.slice(0, 4));
+  if (!HOLIDAY_COVERAGE_YEARS.has(year)) return false;
   const dow = isoDow(isoDate);
   if (dow === 6 || dow === 7) return false;
+  if (isJapaneseBankYearEndClosure(isoDate)) return false;
   if (FIXED_HOLIDAYS.has(isoDate)) return false;
   return true;
 }

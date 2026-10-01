@@ -104,11 +104,14 @@ export type WeeklyPayPorts = {
       batchId: string,
       results: WeeklyPayItemResultInput[],
     ) => Promise<WeeklyPayPaymentBatch>;
-    resolveUnknownItem: (
+    releaseItemForResend: (
       orgId: string,
       itemId: string,
-      outcome: "failed" | "cancelled",
-      reason?: string | null,
+      input: {
+        bankConfirmationKind: "not_executed" | "failed_at_bank";
+        bankTransactionRef: string;
+        evidenceNote: string;
+      },
     ) => Promise<WeeklyPayPaymentBatchItemMasked>;
     listSettlementLedger: (
       orgId: string,

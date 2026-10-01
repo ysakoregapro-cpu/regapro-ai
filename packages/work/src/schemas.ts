@@ -180,7 +180,8 @@ export const RecordWeeklyPayItemResultsSchema = z.object({
   results: z.array(WeeklyPayItemResultSchema).min(1),
 });
 
-export const ResolveUnknownItemSchema = z.object({
-  outcome: z.enum(["failed", "cancelled"]),
-  reason: z.string().trim().max(500).optional(),
+export const ReleaseItemForResendSchema = z.object({
+  bankConfirmationKind: z.enum(["not_executed", "failed_at_bank"]),
+  bankTransactionRef: z.string().trim().min(1).max(120),
+  evidenceNote: z.string().trim().min(8).max(2000),
 });

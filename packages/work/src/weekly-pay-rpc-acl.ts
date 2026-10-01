@@ -20,6 +20,7 @@ export const WEEKLY_PAY_BUSINESS_RPC_IDENTITIES = [
   "public.record_weekly_pay_batch_bank_submission(uuid, text, text)",
   "public.record_weekly_pay_batch_item_results(uuid, jsonb)",
   "public.resolve_weekly_pay_unknown_item(uuid, text, text)",
+  "public.release_weekly_pay_item_for_resend(uuid, text, text, text)",
   "public.regapro_is_japanese_bank_business_day(date)",
 ] as const;
 
@@ -60,6 +61,8 @@ export const WEEKLY_PAY_INTERNAL_HELPER_IDENTITIES = [
   "public.decrypt_application_bank_account_number(uuid)",
   "public.regapro_weekly_pay_payment_mutation_guard()",
   "public.regapro_staff_id_has_permission(uuid, uuid, text)",
+  "public.regapro_mask_weekly_pay_payment_batch(public.weekly_pay_payment_batches)",
+  "public.regapro_mask_weekly_pay_batch_item(public.weekly_pay_payment_batch_items)",
 ] as const;
 
 export const WEEKLY_PAY_RPC_ACL = {

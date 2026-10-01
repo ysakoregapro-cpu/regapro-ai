@@ -819,7 +819,87 @@ export async function runWeeklyPayCases(reporter, fx, weekly, env) {
     );
   }
 
+  // Business-day calendar: year-end + uncovered year fail closed
+  const nye = await reviewer.client.rpc("regapro_is_japanese_bank_business_day", {
+    p_date: "2026-12-31",
+  });
+  if (nye.data === false) {
+    reporter.pass("weekly pay NYE 12-31 not business day", "false");
+  } else {
+    reporter.fail("weekly pay NYE 12-31 not business day", String(nye.data));
+  }
+  const y2028 = await reviewer.client.rpc("regapro_is_japanese_bank_business_day", {
+    p_date: "2028-01-10",
+  });
+  if (y2028.data === false) {
+    reporter.pass("weekly pay uncovered year 2028 fail closed", "false");
+  } else {
+    reporter.fail("weekly pay uncovered year 2028 fail closed", String(y2028.data));
+  }
+
   if (batch.data?.id) {
+    const batchSelect = await reviewer.client
+      .from("weekly_pay_payment_batches")
+      .select("id, transferor_snapshot")
+      .eq("id", batch.data.id)
+      .maybeSingle();
+    const cipherSelect = await reviewer.client
+      .from("weekly_pay_payment_batches")
+      .select("transferor_account_number_ciphertext")
+      .eq("id", batch.data.id)
+      .maybeSingle();
+    const snap = batchSelect.data?.transferor_snapshot ?? {};
+    const leak =
+      batchSelect.error ||
+      Object.prototype.hasOwnProperty.call(snap, "sourceAccountNumber") ||
+      Object.prototype.hasOwnProperty.call(snap, "sourceAccountNumberCiphertext") ||
+      !cipherSelect.error;
+    if (!leak && snap.sourceAccountNumberLast4) {
+      reporter.pass("weekly pay batch SELECT hides transferor account", "last4 only");
+    } else {
+      reporter.fail(
+        "weekly pay batch SELECT hides transferor account",
+        batchSelect.error?.message ??
+          cipherSelect.error?.message ??
+          "plaintext/ciphertext exposed",
+      );
+    }
+
+    const earlyPaid = await reviewer.client.rpc("record_weekly_pay_batch_item_results", {
+      p_batch_id: batch.data.id,
+      p_results: [
+        {
+          itemId: "00000000-0000-0000-0000-000000000001",
+          outcome: "paid",
+          paidOn: "2026-10-02",
+          bankTransactionRef: "EARLY",
+          evidenceNote: "should fail before bank submit",
+        },
+      ],
+    });
+    if (/INVALID_TRANSITION/i.test(earlyPaid.error?.message ?? "")) {
+      reporter.pass("weekly pay confirmed→paid denied", earlyPaid.error.message);
+    } else {
+      reporter.fail(
+        "weekly pay confirmed→paid denied",
+        earlyPaid.error?.message ?? "paid from confirmed",
+      );
+    }
+
+    const earlySubmit = await reviewer.client.rpc("record_weekly_pay_batch_bank_submission", {
+      p_batch_id: batch.data.id,
+      p_note: "too early",
+      p_bank_file_ref: null,
+    });
+    if (/INVALID_TRANSITION/i.test(earlySubmit.error?.message ?? "")) {
+      reporter.pass("weekly pay confirmed→bank_submitted denied", earlySubmit.error.message);
+    } else {
+      reporter.fail(
+        "weekly pay confirmed→bank_submitted denied",
+        earlySubmit.error?.message ?? "submit from confirmed",
+      );
+    }
+
     const svcCsv = await fx.admin.rpc("regapro_service_load_batch_csv_payload", {
       p_batch_id: batch.data.id,
       p_actor_staff_id: weekly.staffReviewer,
@@ -829,7 +909,8 @@ export async function runWeeklyPayCases(reporter, fx, weekly, env) {
       svcCsv.data?.itemCount === 1 &&
       svcCsv.data?.totalAmountYen === draft.data.total_amount_yen &&
       Array.isArray(svcCsv.data?.items) &&
-      typeof svcCsv.data.items[0]?.account_number === "string"
+      typeof svcCsv.data.items[0]?.account_number === "string" &&
+      typeof svcCsv.data?.transferor?.sourceAccountNumber === "string"
     ) {
       reporter.pass("weekly pay service CSV payload", "decrypt ok (no log of number)");
     } else {
@@ -848,27 +929,137 @@ export async function runWeeklyPayCases(reporter, fx, weekly, env) {
       reporter.fail("weekly pay export recorded", exportRec.error?.message ?? "fail");
     }
 
+    const bankSub = await reviewer.client.rpc("record_weekly_pay_batch_bank_submission", {
+      p_batch_id: batch.data.id,
+      p_note: "uploaded to bank (fixture)",
+      p_bank_file_ref: "FIXTURE-FILE-1",
+    });
+    if (!bankSub.error && bankSub.data.status === "bank_submitted") {
+      reporter.pass("weekly pay bank submission recorded", bankSub.data.status);
+    } else {
+      reporter.fail(
+        "weekly pay bank submission recorded",
+        bankSub.error?.message ?? bankSub.data?.status,
+      );
+    }
+
     const items = await reviewer.client
       .from("weekly_pay_payment_batch_items")
       .select("id, outcome, amount_yen")
       .eq("batch_id", batch.data.id);
     const itemId = items.data?.[0]?.id;
-    const paid = await reviewer.client.rpc("record_weekly_pay_batch_item_results", {
+
+    // Mark unknown then ensure bulk cancel cannot release it
+    const unknownRec = await reviewer.client.rpc("record_weekly_pay_batch_item_results", {
       p_batch_id: batch.data.id,
       p_results: [
         {
           itemId,
-          outcome: "paid",
-          paidOn: "2026-10-02",
-          bankTransactionRef: "TEST-TX-001",
-          evidenceNote: "fixture bank inquiry confirmation",
+          outcome: "unknown",
+          evidenceNote: "bank result unclear in fixture inquiry",
         },
       ],
     });
-    if (!paid.error && paid.data.status === "closed") {
-      reporter.pass("weekly pay item paid closes batch", paid.data.status);
+    if (!unknownRec.error && unknownRec.data.status === "settling") {
+      reporter.pass("weekly pay unknown recorded", "settling");
     } else {
-      reporter.fail("weekly pay item paid closes batch", paid.error?.message ?? paid.data?.status);
+      reporter.fail(
+        "weekly pay unknown recorded",
+        unknownRec.error?.message ?? unknownRec.data?.status,
+      );
+    }
+
+    const cancelBlocked = await reviewer.client.rpc("cancel_weekly_pay_payment_batch", {
+      p_batch_id: batch.data.id,
+      p_reason: "try release unknown via cancel",
+    });
+    if (/INVALID_TRANSITION/i.test(cancelBlocked.error?.message ?? "")) {
+      reporter.pass("weekly pay cancel with unknown denied", cancelBlocked.error.message);
+    } else {
+      reporter.fail(
+        "weekly pay cancel with unknown denied",
+        cancelBlocked.error?.message ?? "cancel released unknown",
+      );
+    }
+
+    const freeResolve = await reviewer.client.rpc("resolve_weekly_pay_unknown_item", {
+      p_item_id: itemId,
+      p_outcome: "failed",
+      p_reason: "free text only",
+    });
+    if (denied(freeResolve.error) || /release_weekly_pay_item_for_resend/i.test(freeResolve.error?.message ?? "")) {
+      reporter.pass("weekly pay free resolve unknown denied", freeResolve.error?.message ?? "ok");
+    } else {
+      reporter.fail(
+        "weekly pay free resolve unknown denied",
+        freeResolve.error?.message ?? "free resolve allowed",
+      );
+    }
+
+    const release = await reviewer.client.rpc("release_weekly_pay_item_for_resend", {
+      p_item_id: itemId,
+      p_bank_confirmation_kind: "not_executed",
+      p_bank_transaction_ref: "BANK-INQUIRY-REF-1",
+      p_evidence_note: "confirmed not executed on bank inquiry screen",
+    });
+    if (!release.error && release.data?.outcome === "failed") {
+      reporter.pass("weekly pay release for resend", "failed");
+    } else {
+      reporter.fail(
+        "weekly pay release for resend",
+        release.error?.message ?? release.data?.outcome,
+      );
+    }
+
+    // New batch for paid path on a fresh application is heavy; pay the released item's
+    // application via re-batch is covered by duplicate constraints. Instead create is done;
+    // record paid requires a pending item — reopen path: create second app not available.
+    // Mark a synthetic pending is not possible; verify paid works on a new batch below only
+    // if release left application free — application can be re-batched after failed.
+    const rebatch = await reviewer.client.rpc("create_weekly_pay_payment_batch", {
+      p_application_ids: [draft.data.id],
+      p_bank_transfer_date: "2026-10-05",
+      p_scheduled_payment_date: null,
+    });
+    if (!rebatch.error && rebatch.data?.status === "confirmed") {
+      reporter.pass("weekly pay rebatch after release", rebatch.data.id?.slice?.(0, 8) ?? "ok");
+      await reviewer.client.rpc("record_weekly_pay_batch_export", {
+        p_batch_id: rebatch.data.id,
+      });
+      await reviewer.client.rpc("record_weekly_pay_batch_bank_submission", {
+        p_batch_id: rebatch.data.id,
+        p_note: "rebatch upload",
+        p_bank_file_ref: "FIXTURE-FILE-2",
+      });
+      const reItems = await reviewer.client
+        .from("weekly_pay_payment_batch_items")
+        .select("id")
+        .eq("batch_id", rebatch.data.id);
+      const paid = await reviewer.client.rpc("record_weekly_pay_batch_item_results", {
+        p_batch_id: rebatch.data.id,
+        p_results: [
+          {
+            itemId: reItems.data?.[0]?.id,
+            outcome: "paid",
+            paidOn: "2026-10-05",
+            bankTransactionRef: "TEST-TX-001",
+            evidenceNote: "fixture bank inquiry confirmation",
+          },
+        ],
+      });
+      if (!paid.error && paid.data.status === "closed") {
+        reporter.pass("weekly pay item paid closes batch", paid.data.status);
+      } else {
+        reporter.fail(
+          "weekly pay item paid closes batch",
+          paid.error?.message ?? paid.data?.status,
+        );
+      }
+    } else {
+      reporter.fail(
+        "weekly pay rebatch after release",
+        rebatch.error?.message ?? "rebatch failed",
+      );
     }
 
     const ledger = await worker.client

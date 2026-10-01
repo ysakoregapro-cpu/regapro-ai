@@ -75,14 +75,18 @@ describe("SMTB sogo CSV", () => {
     expect(() => toHalfWidthKatakanaForSmtb("山田太郎")).toThrow(/half-width/);
   });
 
-  it("rejects weekends and published bank holidays including Friday holiday weeks", () => {
+  it("rejects weekends, holidays, year-end closure, and uncovered years", () => {
     expect(isJapaneseBankBusinessDay("2025-05-02")).toBe(true); // Fri before Golden Week
     expect(isJapaneseBankBusinessDay("2025-05-03")).toBe(false); // Sat + 憲法記念日
     expect(isJapaneseBankBusinessDay("2025-05-06")).toBe(false); // Tue 振替
     expect(isJapaneseBankBusinessDay("2026-02-11")).toBe(false); // Wed holiday
     expect(isJapaneseBankBusinessDay("2025-11-22")).toBe(false); // Sat
-    expect(isJapaneseBankBusinessDay("2025-11-24")).toBe(false); // Mon 振替 after Sunday holiday
-    // Week containing Friday 2024-style GW: ensure Fri holiday would block if listed
-    expect(isJapaneseBankBusinessDay("2025-01-03")).toBe(true);
+    expect(isJapaneseBankBusinessDay("2025-11-24")).toBe(false); // Mon 振替
+    expect(isJapaneseBankBusinessDay("2026-12-31")).toBe(false); // SMTB year-end
+    expect(isJapaneseBankBusinessDay("2027-01-02")).toBe(false); // year-end window
+    expect(isJapaneseBankBusinessDay("2027-01-03")).toBe(false);
+    expect(isJapaneseBankBusinessDay("2025-01-03")).toBe(false); // Jan 1–3 closure
+    expect(isJapaneseBankBusinessDay("2026-10-02")).toBe(true); // covered weekday
+    expect(isJapaneseBankBusinessDay("2028-01-10")).toBe(false); // uncovered year fail closed
   });
 });

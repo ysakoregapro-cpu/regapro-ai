@@ -450,15 +450,18 @@ export async function recordPaymentBatchItemResults(
   return ports.payments.recordItemResults(actor.orgId, batchId, results);
 }
 
-export async function resolveUnknownPaymentItem(
+export async function releasePaymentItemForResend(
   ports: WeeklyPayPorts,
   actor: WeeklyPayActor,
   itemId: string,
-  outcome: "failed" | "cancelled",
-  reason?: string | null,
+  input: {
+    bankConfirmationKind: "not_executed" | "failed_at_bank";
+    bankTransactionRef: string;
+    evidenceNote: string;
+  },
 ): Promise<WeeklyPayPaymentBatchItemMasked> {
   requirePay(actor);
-  return ports.payments.resolveUnknownItem(actor.orgId, itemId, outcome, reason);
+  return ports.payments.releaseItemForResend(actor.orgId, itemId, input);
 }
 
 export async function listSettlementLedger(

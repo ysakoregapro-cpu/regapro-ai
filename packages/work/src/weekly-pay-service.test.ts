@@ -77,7 +77,7 @@ function emptyPaymentPorts(): WeeklyPayPorts["payments"] {
     recordExport: vi.fn(),
     recordBankSubmission: vi.fn(),
     recordItemResults: vi.fn(),
-    resolveUnknownItem: vi.fn(),
+    releaseItemForResend: vi.fn(),
     listSettlementLedger: vi.fn(),
     loadCsvPayload: vi.fn(),
   };

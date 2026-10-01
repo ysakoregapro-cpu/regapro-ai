@@ -644,11 +644,12 @@ export function createSupabaseWeeklyPayPorts(
         if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "payment batch");
         return mapBatch(data);
       },
-      async resolveUnknownItem(_orgId, itemId, outcome, reason) {
-        const { data, error } = await client.rpc("resolve_weekly_pay_unknown_item", {
+      async releaseItemForResend(_orgId, itemId, input) {
+        const { data, error } = await client.rpc("release_weekly_pay_item_for_resend", {
           p_item_id: itemId,
-          p_outcome: outcome,
-          p_reason: reason ?? null,
+          p_bank_confirmation_kind: input.bankConfirmationKind,
+          p_bank_transaction_ref: input.bankTransactionRef,
+          p_evidence_note: input.evidenceNote,
         });
         if (error) throwFromRpc(error);
         if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "batch item");
