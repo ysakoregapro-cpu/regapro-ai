@@ -110,9 +110,15 @@ export default function WorkRecordsClient() {
     workLocationId: "",
     sourceShiftId: "",
   });
-  const [termForm, setTermForm] = useState({
+  const [termForm, setTermForm] = useState<{
+    staffId: string;
+    hourlyWageYen: number | "";
+    effectiveFrom: string;
+    effectiveTo: string;
+    closeOpenEnded: boolean;
+  }>({
     staffId: "",
-    hourlyWageYen: 1200,
+    hourlyWageYen: "",
     effectiveFrom: tokyoToday(),
     effectiveTo: "",
     closeOpenEnded: true,
@@ -171,10 +177,10 @@ export default function WorkRecordsClient() {
 
   const loadMeta = useCallback(async () => {
     const [loc, shift] = await Promise.all([
-      api<{ locations: Location[] }>("/api/work/locations").catch(() => ({ locations: [] })),
+      api<{ locations: Location[] }>("/api/work/locations"),
       api<{ shifts: ShiftRow[] }>(
         `/api/work/shifts?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
-      ).catch(() => ({ shifts: [] })),
+      ),
     ]);
     setLocations(loc.locations ?? []);
     setPublishedShifts((shift.shifts ?? []).filter((s) => s.status === "published"));
@@ -284,12 +290,18 @@ export default function WorkRecordsClient() {
 
   async function saveTerm() {
     setError(null);
+    const wage =
+      termForm.hourlyWageYen === "" ? NaN : Number(termForm.hourlyWageYen);
+    if (!Number.isInteger(wage) || wage <= 0) {
+      setError("時給（円）を入力してください");
+      return;
+    }
     try {
       await api("/api/work/employment-terms", {
         method: "POST",
         body: JSON.stringify({
           staffId: termForm.staffId,
-          hourlyWageYen: termForm.hourlyWageYen,
+          hourlyWageYen: wage,
           effectiveFrom: termForm.effectiveFrom,
           effectiveTo: termForm.effectiveTo || null,
           closeOpenEnded: termForm.closeOpenEnded,
@@ -336,11 +348,22 @@ export default function WorkRecordsClient() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 pb-24 sm:pb-6">
-      <header className="mb-4">
+      <header className="mb-4 border-b border-[var(--color-border)] pb-4">
         <h1 className="text-lg font-semibold text-[var(--color-text)]">勤務実績</h1>
-        <p className="mt-1 text-[12px] text-[var(--color-text)]/70">
-          実際の勤務時間の正本です。シフトは入力補助のみで、給与計算の根拠にはしません。
-        </p>
+        <dl className="mt-2 grid gap-1 text-[12px] text-[var(--color-text)]/80 sm:grid-cols-3">
+          <div>
+            <dt className="font-medium text-[var(--color-text)]">今やること</dt>
+            <dd>{tab === "terms" ? "雇用条件の登録" : "実績の下書き・確定"}</dd>
+          </div>
+          <div>
+            <dt className="font-medium text-[var(--color-text)]">対象と状態</dt>
+            <dd>{tab === "terms" ? "employment_terms" : "work_records"}</dd>
+          </div>
+          <div>
+            <dt className="font-medium text-[var(--color-text)]">次の操作</dt>
+            <dd>{tab === "terms" ? "時給を入力して保存" : "保存または確定"}</dd>
+          </div>
+        </dl>
       </header>
 
       <div className="mb-4 flex gap-1 overflow-x-auto border-b border-[var(--color-border)]">
@@ -677,7 +700,10 @@ export default function WorkRecordsClient() {
                 min={1}
                 value={termForm.hourlyWageYen}
                 onChange={(e) =>
-                  setTermForm({ ...termForm, hourlyWageYen: Number(e.target.value) })
+                  setTermForm({
+                    ...termForm,
+                    hourlyWageYen: e.target.value === "" ? "" : Number(e.target.value),
+                  })
                 }
                 className="rounded-md border border-[var(--color-border)] px-2 py-1.5"
               />

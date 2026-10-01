@@ -180,7 +180,7 @@ describe("platform_admin template", () => {
 });
 
 describe("Phase 7 work modules visibility", () => {
-  it("exposes weekly_pay, shift, work_record; keeps expense/sales/documents/work planned", () => {
+  it("exposes weekly_pay, shift, work_record, expense, sales; keeps documents/work planned", () => {
     const ctx = makeAccess({
       grants: [
         grant("weekly_pay.submit"),
@@ -206,40 +206,38 @@ describe("Phase 7 work modules visibility", () => {
     expect(getModule("shift").featureState).toBe("available");
     expect(getModule("work_record").featureState).toBe("available");
     expect(getModule("documents").featureState).toBe("planned");
-    expect(getModule("expense").featureState).toBe("planned");
-    expect(getModule("sales").featureState).toBe("planned");
+    expect(getModule("expense").featureState).toBe("available");
+    expect(getModule("sales").featureState).toBe("available");
     expect(getModule("work").featureState).toBe("planned");
 
     expect(canViewModule(ctx, getModule("weekly_pay"))).toBe(true);
     expect(canViewModule(ctx, getModule("shift"))).toBe(true);
     expect(canViewModule(ctx, getModule("work_record"))).toBe(true);
     expect(canViewModule(ctx, getModule("documents"))).toBe(false);
-    expect(canViewModule(ctx, getModule("expense"))).toBe(false);
-    expect(canViewModule(ctx, getModule("sales"))).toBe(false);
+    expect(canViewModule(ctx, getModule("expense"))).toBe(true);
+    expect(canViewModule(ctx, getModule("sales"))).toBe(true);
     expect(canViewModule(ctx, getModule("work"))).toBe(false);
 
     const ids = visibleModules(ctx, "desktop").map((m) => m.id);
     expect(ids).toContain("weekly_pay");
     expect(ids).toContain("shift");
     expect(ids).toContain("work_record");
+    expect(ids).toContain("expense");
+    expect(ids).toContain("sales");
     expect(ids).not.toContain("documents");
-    expect(ids).not.toContain("expense");
-    expect(ids).not.toContain("sales");
     expect(ids).not.toContain("work");
 
     const labels = (items: { label: string }[]) => items.map((i) => i.label);
     const nav = buildNavigation(ctx);
     expect(labels(nav.work)).toEqual(
-      expect.arrayContaining(["週払い", "シフト", "勤務実績"]),
+      expect.arrayContaining(["週払い", "シフト", "勤務実績", "経費", "売上"]),
     );
-    expect(labels(nav.work)).not.toContain("経費");
-    expect(labels(nav.work)).not.toContain("売上");
     expect(labels(nav.work)).not.toContain("書類");
     expect(labels(buildDashboardShortcuts(ctx))).toEqual(
-      expect.arrayContaining(["週払い", "シフト", "勤務実績"]),
+      expect.arrayContaining(["週払い", "シフト", "勤務実績", "経費"]),
     );
     expect(labels(buildMobileNavigation(ctx))).toEqual(
-      expect.arrayContaining(["シフト", "勤務実績"]),
+      expect.arrayContaining(["シフト", "勤務実績", "経費"]),
     );
   });
 

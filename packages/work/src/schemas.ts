@@ -201,3 +201,70 @@ export const ReleaseItemForResendSchema = z.object({
   bankTransactionRef: z.string().trim().min(1).max(120),
   evidenceNote: z.string().trim().min(8).max(2000),
 });
+
+export const ExpenseApplicationListQuerySchema = z.object({
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+  staffId: z.string().uuid().optional(),
+  status: z.enum(["draft", "pending", "approved", "returned"]).optional(),
+});
+
+export const UpsertExpenseApplicationDraftSchema = z.object({
+  applicationId: z.string().uuid().optional(),
+  staffId: z.string().uuid().optional(),
+  applicationType: z.enum(["advance", "after"]),
+  categoryId: z.string().uuid(),
+  amountYen: z.number().int().positive(),
+  expenseDate: isoDate,
+  description: z.string().trim().min(1).max(4000),
+});
+
+export const ReturnExpenseApplicationSchema = z.object({
+  reason: z.string().min(3).max(1000),
+});
+
+export const AttachExpenseReceiptSchema = z.object({
+  fileObjectId: z.string().uuid(),
+});
+
+export const PersonalSalesCaseListQuerySchema = z.object({
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+  staffId: z.string().uuid().optional(),
+  status: z.enum(["active", "voided", "corrected"]).optional(),
+});
+
+export const PersonalSalesAllocationInputSchema = z.object({
+  staffId: z.string().uuid(),
+  shareRateBps: z.number().int().min(0).max(10000),
+  amountYen: z.number().int().min(0),
+});
+
+export const CreatePersonalSalesCaseSchema = z.object({
+  staffId: z.string().uuid().optional(),
+  occurredOn: isoDate,
+  title: z.string().trim().min(1).max(500),
+  totalAmountYen: z.number().int().positive(),
+  note: z.string().trim().max(4000).nullable().optional(),
+  allocations: z.array(PersonalSalesAllocationInputSchema).min(1),
+  allocationRuleVersionId: z.string().uuid().nullable().optional(),
+});
+
+export const VoidPersonalSalesCaseSchema = z.object({
+  reason: z.string().min(3).max(2000),
+});
+
+export const CorrectPersonalSalesCaseSchema = z.object({
+  occurredOn: isoDate,
+  title: z.string().trim().min(1).max(500),
+  totalAmountYen: z.number().int().positive(),
+  note: z.string().trim().max(4000).nullable().optional(),
+  allocations: z.array(PersonalSalesAllocationInputSchema).min(1),
+  reason: z.string().min(3).max(2000),
+});
+
+export const UpsertAllocationRuleDraftSchema = z.object({
+  effectiveFrom: isoDate,
+  effectiveTo: isoDate.nullable().optional(),
+  rulePayload: z.unknown(),
+});

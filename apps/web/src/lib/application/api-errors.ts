@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import {
+  isExpenseDomainError,
+  isSalesDomainError,
   isShiftDomainError,
   isWeeklyPayDomainError,
   isWorkDomainError,
@@ -63,6 +65,35 @@ export function classifyThrown(err: unknown): AppErrorCode {
         return "VALIDATION";
     }
   }
+  if (isExpenseDomainError(err)) {
+    const expenseErr = err;
+    switch (expenseErr.code) {
+      case "FORBIDDEN":
+      case "SELF_REVIEW":
+        return "FORBIDDEN";
+      case "NOT_FOUND":
+        return "NOT_FOUND";
+      case "CONFLICT":
+      case "INVALID_TRANSITION":
+        return "CONFLICT";
+      default:
+        return "VALIDATION";
+    }
+  }
+  if (isSalesDomainError(err)) {
+    const salesErr = err;
+    switch (salesErr.code) {
+      case "FORBIDDEN":
+        return "FORBIDDEN";
+      case "NOT_FOUND":
+        return "NOT_FOUND";
+      case "CONFLICT":
+      case "INVALID_TRANSITION":
+        return "CONFLICT";
+      default:
+        return "VALIDATION";
+    }
+  }
   if (isWeeklyPayDomainError(err)) {
     switch (err.code) {
       case "FORBIDDEN":
@@ -95,7 +126,7 @@ export function classifyThrown(err: unknown): AppErrorCode {
     return "UNAUTHENTICATED";
   }
   if (
-    /row-level security|permission denied|42501|FORBIDDEN|SHIFT_FORBIDDEN|WORK_FORBIDDEN|WEEKLY_PAY_FORBIDDEN|WEEKLY_PAY_SELF_REVIEW|NO_ORGANIZATION|NO_PLATFORM_IDENTITY|STAFF_INACTIVE|UNAUTHORIZED_REVIEW|UNAUTHORIZED_KNOWLEDGE/i.test(
+    /row-level security|permission denied|42501|FORBIDDEN|SHIFT_FORBIDDEN|WORK_FORBIDDEN|WEEKLY_PAY_FORBIDDEN|WEEKLY_PAY_SELF_REVIEW|EXPENSE_FORBIDDEN|EXPENSE_SELF_REVIEW|SALES_FORBIDDEN|NO_ORGANIZATION|NO_PLATFORM_IDENTITY|STAFF_INACTIVE|UNAUTHORIZED_REVIEW|UNAUTHORIZED_KNOWLEDGE/i.test(
       msg,
     )
   ) {

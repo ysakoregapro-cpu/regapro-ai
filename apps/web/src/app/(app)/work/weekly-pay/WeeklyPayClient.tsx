@@ -487,10 +487,27 @@ export default function WeeklyPayClient() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 text-[var(--color-text)]">
       <header className="mb-6 border-b border-[var(--color-border)] pb-4">
-        <h1 className="text-lg font-semibold">週払い</h1>
-        <p className="mt-1 text-[13px] text-[var(--color-text)]/70">
-          申請・承認・総合振込CSV・銀行結果の支払記録（役割に応じた操作）
-        </p>
+        <h1 className="text-lg font-semibold text-[var(--color-text)]">週払い</h1>
+        <dl className="mt-2 grid gap-1 text-[13px] text-[var(--color-text)]/80 sm:grid-cols-3">
+          <div>
+            <dt className="font-medium text-[var(--color-text)]">今やること</dt>
+            <dd>
+              {tab === "review"
+                ? "申請の承認・差戻し"
+                : tab === "approved"
+                  ? "振込バッチ作成"
+                  : "週次申請の作成"}
+            </dd>
+          </div>
+          <div>
+            <dt className="font-medium text-[var(--color-text)]">対象と状態</dt>
+            <dd>weekly_applications / payment_batches</dd>
+          </div>
+          <div>
+            <dt className="font-medium text-[var(--color-text)]">次の操作</dt>
+            <dd>{perms.review && tab === "review" ? "承認または差戻し" : "下書き保存・提出"}</dd>
+          </div>
+        </dl>
       </header>
 
       <nav className="mb-4 flex flex-wrap gap-2 text-[13px]" aria-label="週払いセクション">

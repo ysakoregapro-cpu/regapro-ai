@@ -49,6 +49,12 @@ import {
   setupWeeklyPayFixtures,
   weeklyPayTablesReady,
 } from "./cases-weekly-pay.mjs";
+import {
+  cleanupExpenseSalesFixtures,
+  expenseSalesTablesReady,
+  runExpenseSalesCases,
+  setupExpenseSalesFixtures,
+} from "./cases-expense-sales.mjs";
 
 async function main() {
   loadEnvFiles();
@@ -67,6 +73,7 @@ async function main() {
   let shift = null;
   let workRecord = null;
   let weeklyPay = null;
+  let expenseSales = null;
   try {
     console.log("Setting up fixtures (service_role / admin auth)...");
     fx = await setupFixtures({ ...env, runId });
@@ -128,6 +135,19 @@ async function main() {
           `table ${weeklyReady.missing} not present — apply supabase/migrations/20261001024933_weekly_pay_application_foundation.sql first`,
         );
       }
+
+      const esReady = await expenseSalesTablesReady(fx.admin);
+      if (esReady.ready) {
+        console.log("\nSetting up expense / personal sales fixtures...");
+        expenseSales = await setupExpenseSalesFixtures(fx, platform);
+        console.log("\nChecking Phase 8 expense / personal sales...");
+        await runExpenseSalesCases(reporter, fx, platform, expenseSales, env);
+      } else {
+        reporter.skip(
+          "expense / sales domain cases",
+          `table ${esReady.missing} not present — apply supabase/migrations/20261001200000_expense_sales_phase8_foundation.sql first`,
+        );
+      }
     } else {
       reporter.skip(
         "integrated app foundation cases",
@@ -141,6 +161,7 @@ async function main() {
     if (fx && !keep) {
       console.log("\nCleaning fixture data...");
       try {
+        await cleanupExpenseSalesFixtures(fx.admin, expenseSales);
         await cleanupWeeklyPayFixtures(fx.admin, weeklyPay);
         await cleanupWorkRecordFixtures(fx, workRecord);
         await cleanupShiftFixtures(fx, shift);

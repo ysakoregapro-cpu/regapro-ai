@@ -55,8 +55,8 @@ describe("permission-driven navigation", () => {
       grants: [grant("expense.manage"), grant("sales.manage"), grant("chat.use")],
     });
     const all = visibleModules(ctx, "desktop");
-    expect(all.map((m) => m.id)).not.toContain("expense");
-    expect(all.map((m) => m.id)).not.toContain("sales");
+    expect(all.map((m) => m.id)).toContain("expense");
+    expect(all.map((m) => m.id)).toContain("sales");
     expect(all.map((m) => m.id)).not.toContain("chat");
     expect(all.map((m) => m.id)).not.toContain("weekly_pay");
     expect(all.map((m) => m.id)).not.toContain("shift");

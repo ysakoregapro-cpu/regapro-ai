@@ -203,7 +203,7 @@ export const MODULE_REGISTRY: readonly ModuleDefinition[] = [
     requiredPermissions: ["expense.submit", "expense.view_own", "expense.manage"],
     dashboardVisibility: true,
     mobileVisibility: true,
-    featureState: "planned",
+    featureState: "available",
     order: 61,
   }),
   define({
@@ -217,7 +217,7 @@ export const MODULE_REGISTRY: readonly ModuleDefinition[] = [
     requiredPermissions: ["sales.view_own", "sales.manage"],
     dashboardVisibility: true,
     mobileVisibility: false,
-    featureState: "planned",
+    featureState: "available",
     order: 62,
   }),
   define({

@@ -1,0 +1,19 @@
+import { NextResponse } from "next/server";
+import { catchToJson } from "@/lib/application/api-errors";
+import { submitExpenseApplicationForAccess } from "@/lib/application/expense-service";
+import { withPlatformGuard } from "@/lib/platform/api-guard";
+
+type Context = { params: Promise<{ id: string }> };
+
+export const POST = withPlatformGuard<Context>(
+  { moduleId: "expense", anyPermissions: ["expense.submit", "expense.manage"] },
+  async ({ access, context }) => {
+    try {
+      const { id } = await context.params;
+      const application = await submitExpenseApplicationForAccess(access, id);
+      return NextResponse.json({ ok: true, application });
+    } catch (err) {
+      return catchToJson(err);
+    }
+  },
+);

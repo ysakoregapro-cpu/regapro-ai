@@ -308,11 +308,22 @@ export default function ShiftClient() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 pb-24 sm:pb-6">
-      <header className="mb-4">
+      <header className="mb-4 border-b border-[var(--color-border)] pb-4">
         <h1 className="text-lg font-semibold text-[var(--color-text)]">シフト</h1>
-        <p className="mt-1 text-[12px] text-[var(--color-text)]/70">
-          希望提出・公開シフト確認・シフト管理。勤務実績や給与の正本ではありません。
-        </p>
+        <dl className="mt-2 grid gap-1 text-[12px] text-[var(--color-text)]/80 sm:grid-cols-3">
+          <div>
+            <dt className="font-medium text-[var(--color-text)]">今やること</dt>
+            <dd>{tab === "request" ? "希望シフト提出" : tab === "manage" ? "シフト編成" : "公開シフト確認"}</dd>
+          </div>
+          <div>
+            <dt className="font-medium text-[var(--color-text)]">対象と状態</dt>
+            <dd>shift_requests / published shifts</dd>
+          </div>
+          <div>
+            <dt className="font-medium text-[var(--color-text)]">次の操作</dt>
+            <dd>{tab === "request" ? "期間を選んで保存" : "一覧から更新"}</dd>
+          </div>
+        </dl>
       </header>
 
       <div className="mb-4 flex gap-1 overflow-x-auto border-b border-[var(--color-border)]">

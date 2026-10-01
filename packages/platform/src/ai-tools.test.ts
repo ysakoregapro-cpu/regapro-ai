@@ -66,19 +66,19 @@ describe("AI tool permission guard", () => {
 
   it("refuses tools belonging to a planned module", async () => {
     const plannedTool: AiToolDefinition = {
-      name: "expense.get_my_expenses",
-      moduleId: "expense",
-      description: "自分の経費を取得する",
+      name: "documents.list",
+      moduleId: "documents",
+      description: "書類ツール（planned module）",
       parameters: { type: "object", properties: {} },
-      requiredPermissions: ["expense.view_own"],
+      requiredPermissions: ["documents.use"],
       execute: async () => ({}),
     };
     const planned = createAiToolRegistry([plannedTool]);
-    const ctx = makeAccess({ grants: [grant("expense.view_own")] });
+    const ctx = makeAccess({ grants: [grant("documents.use")] });
 
     await expect(
       planned.invoke({
-        name: "expense.get_my_expenses",
+        name: "documents.list",
         input: {},
         access: ctx,
       }),
