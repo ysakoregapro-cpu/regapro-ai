@@ -65,6 +65,24 @@ function emptyBankPorts(): WeeklyPayPorts["bank"] {
   };
 }
 
+function emptyPaymentPorts(): WeeklyPayPorts["payments"] {
+  return {
+    getTransferorSettings: vi.fn(),
+    upsertTransferorSettings: vi.fn(),
+    listBatches: vi.fn(),
+    getBatch: vi.fn(),
+    listBatchItems: vi.fn(),
+    createBatch: vi.fn(),
+    cancelBatch: vi.fn(),
+    recordExport: vi.fn(),
+    recordBankSubmission: vi.fn(),
+    recordItemResults: vi.fn(),
+    resolveUnknownItem: vi.fn(),
+    listSettlementLedger: vi.fn(),
+    loadCsvPayload: vi.fn(),
+  };
+}
+
 function portsWith(
   applications: Partial<WeeklyPayPorts["applications"]>,
 ): WeeklyPayPorts {
@@ -81,6 +99,7 @@ function portsWith(
     },
     policies: { listActive: vi.fn(), upsert: vi.fn() },
     bank: emptyBankPorts(),
+    payments: emptyPaymentPorts(),
   };
 }
 

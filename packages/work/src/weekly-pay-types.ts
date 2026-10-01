@@ -4,6 +4,7 @@
  * Inputs: confirmed Work Records + employment wage snapshots + policy.
  * Shift is never payroll SoT. Paid / transfer CSV are later phases.
  * Phase 5: bank accounts + application bank snapshots (masked in APIs).
+ * Phase 6: payment batches, SMTB CSV, settlement ledger (paid ≠ approved).
  */
 
 import type { IsoDate, IsoTime } from "./types.js";
@@ -212,4 +213,127 @@ export type UpsertWorkerSettingsInput = {
   weeklyPayEnabled: boolean;
   activeBankAccountId?: string | null;
   staffId?: string;
+};
+
+export const WEEKLY_PAY_BATCH_STATUSES = [
+  "confirmed",
+  "exported",
+  "bank_submitted",
+  "settling",
+  "closed",
+  "cancelled",
+  "superseded",
+] as const;
+export type WeeklyPayBatchStatus = (typeof WEEKLY_PAY_BATCH_STATUSES)[number];
+
+export const WEEKLY_PAY_ITEM_OUTCOMES = [
+  "pending",
+  "paid",
+  "failed",
+  "unknown",
+  "cancelled",
+] as const;
+export type WeeklyPayItemOutcome = (typeof WEEKLY_PAY_ITEM_OUTCOMES)[number];
+
+export type WeeklyPayTransferorSettings = {
+  orgId: string;
+  consignorCode: string;
+  requesterNameKana: string;
+  sourceBankCode: string;
+  sourceBankNameKana: string | null;
+  sourceBranchCode: string;
+  sourceBranchNameKana: string | null;
+  sourceAccountType: BankAccountType;
+  /** Never expose full number in general UI — last4 for display helpers. */
+  sourceAccountNumberLast4: string;
+  updatedAt: string;
+};
+
+export type WeeklyPayTransferorUpsertInput = {
+  consignorCode: string;
+  requesterNameKana: string;
+  sourceBankCode: string;
+  sourceBankNameKana?: string | null;
+  sourceBranchCode: string;
+  sourceBranchNameKana?: string | null;
+  sourceAccountType: BankAccountType;
+  sourceAccountNumber: string;
+};
+
+export type WeeklyPayPaymentBatchItemMasked = {
+  id: string;
+  batchId: string;
+  orgId: string;
+  applicationId: string;
+  staffId: string;
+  amountYen: number;
+  weekStart: IsoDate;
+  weekEnd: IsoDate;
+  applicationPaymentDate: IsoDate;
+  workRecordIds: string[];
+  bankCode: string;
+  branchCode: string;
+  accountType: BankAccountType;
+  accountNumberLast4: string;
+  accountHolderKana: string;
+  outcome: WeeklyPayItemOutcome;
+  paidOn: IsoDate | null;
+  bankTransactionRef: string | null;
+  failureReason: string | null;
+};
+
+export type WeeklyPayPaymentBatch = {
+  id: string;
+  orgId: string;
+  status: WeeklyPayBatchStatus;
+  bankTransferDate: IsoDate;
+  scheduledPaymentDate: IsoDate | null;
+  formatCode: string;
+  itemCount: number;
+  totalAmountYen: number;
+  contentFingerprint: string;
+  exportCount: number;
+  exportedAt: string | null;
+  bankSubmittedAt: string | null;
+  bankSubmissionNote: string | null;
+  bankFileRef: string | null;
+  createdByStaffId: string;
+  createdAt: string;
+  updatedAt: string;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  closedAt: string | null;
+  items?: WeeklyPayPaymentBatchItemMasked[];
+};
+
+export type CreateWeeklyPayPaymentBatchInput = {
+  applicationIds: string[];
+  bankTransferDate: IsoDate;
+  scheduledPaymentDate?: IsoDate | null;
+};
+
+export type WeeklyPayItemResultInput = {
+  itemId: string;
+  outcome: "paid" | "failed" | "unknown";
+  paidOn?: IsoDate;
+  bankTransactionRef?: string;
+  evidenceNote?: string;
+  failureReason?: string;
+};
+
+export type WeeklyPaySettlementLedgerEntry = {
+  id: string;
+  orgId: string;
+  staffId: string;
+  applicationId: string;
+  batchItemId: string;
+  workRecordIds: string[];
+  weekStart: IsoDate;
+  weekEnd: IsoDate;
+  amountYen: number;
+  paidOn: IsoDate;
+  confirmedByStaffId: string;
+  bankTransactionRef: string | null;
+  evidenceNote: string | null;
+  createdAt: string;
 };

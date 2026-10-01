@@ -237,7 +237,7 @@ export const MODULE_REGISTRY: readonly ModuleDefinition[] = [
     ],
     dashboardVisibility: true,
     mobileVisibility: true,
-    featureState: "planned",
+    featureState: "available",
     order: 63,
   }),
   define({

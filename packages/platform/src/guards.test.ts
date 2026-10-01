@@ -35,11 +35,13 @@ describe("route guard denies direct URL access", () => {
   });
 
   it("refuses a planned module even to a caller holding its permission", () => {
-    const ctx = makeAccess({ grants: [grant("expense.manage")] });
+    const ctx = makeAccess({
+      grants: [grant("expense.manage"), grant("shift.manage")],
+    });
     expect(denialCode(() => requireModuleAccess(ctx, "expense"))).toBe(
       "MODULE_UNAVAILABLE",
     );
-    expect(denialCode(() => requireModuleAccess(ctx, "weekly_pay"))).toBe(
+    expect(denialCode(() => requireModuleAccess(ctx, "shift"))).toBe(
       "MODULE_UNAVAILABLE",
     );
   });

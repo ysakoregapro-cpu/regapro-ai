@@ -21,6 +21,12 @@ export const WEEKLY_PAY_ERROR_CODES = [
   "NO_BANK",
   "INVALID_BANK",
   "BANK_KEY_MISSING",
+  "INVALID_TRANSFEROR",
+  "TRANSFEROR_UNSET",
+  "INVALID_TRANSFER_DATE",
+  "DUPLICATE_BATCH",
+  "ALREADY_PAID",
+  "TOTAL_MISMATCH",
 ] as const;
 
 export type WeeklyPayErrorCode = (typeof WEEKLY_PAY_ERROR_CODES)[number];

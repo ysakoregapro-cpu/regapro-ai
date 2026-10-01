@@ -179,7 +179,7 @@ describe("platform_admin template", () => {
 });
 
 describe("planned work modules stay hidden", () => {
-  it("hides weekly_pay, shift, work_record, documents, and work even with permissions", () => {
+  it("exposes weekly_pay; keeps shift, work_record, documents, and work planned", () => {
     const ctx = makeAccess({
       grants: [
         grant("weekly_pay.submit"),
@@ -199,20 +199,20 @@ describe("planned work modules stay hidden", () => {
       ],
     });
 
-    expect(getModule("weekly_pay").featureState).toBe("planned");
+    expect(getModule("weekly_pay").featureState).toBe("available");
     expect(getModule("shift").featureState).toBe("planned");
     expect(getModule("work_record").featureState).toBe("planned");
     expect(getModule("documents").featureState).toBe("planned");
     expect(getModule("work").featureState).toBe("planned");
 
-    expect(canViewModule(ctx, getModule("weekly_pay"))).toBe(false);
+    expect(canViewModule(ctx, getModule("weekly_pay"))).toBe(true);
     expect(canViewModule(ctx, getModule("shift"))).toBe(false);
     expect(canViewModule(ctx, getModule("work_record"))).toBe(false);
     expect(canViewModule(ctx, getModule("documents"))).toBe(false);
     expect(canViewModule(ctx, getModule("work"))).toBe(false);
 
     const ids = visibleModules(ctx, "desktop").map((m) => m.id);
-    expect(ids).not.toContain("weekly_pay");
+    expect(ids).toContain("weekly_pay");
     expect(ids).not.toContain("shift");
     expect(ids).not.toContain("work_record");
     expect(ids).not.toContain("documents");
@@ -220,11 +220,11 @@ describe("planned work modules stay hidden", () => {
 
     const labels = (items: { label: string }[]) => items.map((i) => i.label);
     const nav = buildNavigation(ctx);
-    expect(labels(nav.work)).not.toContain("週払い");
+    expect(labels(nav.work)).toContain("週払い");
     expect(labels(nav.work)).not.toContain("シフト");
     expect(labels(nav.work)).not.toContain("勤務実績");
     expect(labels(nav.work)).not.toContain("書類");
-    expect(labels(buildDashboardShortcuts(ctx))).not.toContain("週払い");
+    expect(labels(buildDashboardShortcuts(ctx))).toContain("週払い");
     expect(labels(buildMobileNavigation(ctx))).not.toContain("シフト");
     expect(labels(buildMobileNavigation(ctx))).not.toContain("勤務実績");
   });

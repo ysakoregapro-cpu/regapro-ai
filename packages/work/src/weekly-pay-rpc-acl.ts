@@ -12,6 +12,19 @@ export const WEEKLY_PAY_BUSINESS_RPC_IDENTITIES = [
   "public.upsert_bank_account_masked(text, text, text, text, text, text, text, uuid)",
   "public.deactivate_bank_account_masked(uuid)",
   "public.upsert_worker_settings(boolean, uuid, uuid)",
+  "public.get_weekly_pay_transferor_settings_masked()",
+  "public.upsert_weekly_pay_transferor_settings(text, text, text, text, text, text, text, text)",
+  "public.create_weekly_pay_payment_batch(uuid[], date, date)",
+  "public.cancel_weekly_pay_payment_batch(uuid, text)",
+  "public.record_weekly_pay_batch_export(uuid)",
+  "public.record_weekly_pay_batch_bank_submission(uuid, text, text)",
+  "public.record_weekly_pay_batch_item_results(uuid, jsonb)",
+  "public.resolve_weekly_pay_unknown_item(uuid, text, text)",
+  "public.regapro_is_japanese_bank_business_day(date)",
+] as const;
+
+export const WEEKLY_PAY_SERVICE_ONLY_RPC_IDENTITIES = [
+  "public.regapro_service_load_batch_csv_payload(uuid, uuid)",
 ] as const;
 
 export const WEEKLY_PAY_RLS_HELPER_IDENTITIES = [
@@ -45,11 +58,14 @@ export const WEEKLY_PAY_INTERNAL_HELPER_IDENTITIES = [
   "public.upsert_bank_account(text, text, text, text, text, text, text, uuid)",
   "public.deactivate_bank_account(uuid)",
   "public.decrypt_application_bank_account_number(uuid)",
+  "public.regapro_weekly_pay_payment_mutation_guard()",
+  "public.regapro_staff_id_has_permission(uuid, uuid, text)",
 ] as const;
 
 export const WEEKLY_PAY_RPC_ACL = {
   business: { anon: false, authenticated: true, service_role: true },
   rlsHelper: { anon: false, authenticated: true, service_role: true },
+  serviceOnly: { anon: false, authenticated: false, service_role: true },
   internal: { anon: false, authenticated: false, service_role: false },
 } as const;
 

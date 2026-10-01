@@ -30,4 +30,14 @@ describe("weekly pay RPC ACL contract", () => {
       "public.regapro_has_any_weekly_pay_permission(uuid)",
     ]);
   });
+
+  it("keeps CSV payload service_role-only", () => {
+    expect(WEEKLY_PAY_RPC_ACL.serviceOnly).toEqual({
+      anon: false,
+      authenticated: false,
+      service_role: true,
+    });
+    expect(expectedWeeklyPayExecute("serviceOnly", "authenticated")).toBe(false);
+    expect(expectedWeeklyPayExecute("serviceOnly", "service_role")).toBe(true);
+  });
 });

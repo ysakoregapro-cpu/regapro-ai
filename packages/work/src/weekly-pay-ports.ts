@@ -2,13 +2,26 @@ import type {
   ApplicationBankSnapshotMasked,
   BankAccountMasked,
   CreateWeeklyApplicationDraftInput,
+  CreateWeeklyPayPaymentBatchInput,
   UpsertBankAccountInput,
   UpsertWorkerSettingsInput,
   WeeklyApplication,
   WeeklyApplicationListQuery,
+  WeeklyPayItemResultInput,
+  WeeklyPayPaymentBatch,
+  WeeklyPayPaymentBatchItemMasked,
   WeeklyPayPolicy,
+  WeeklyPaySettlementLedgerEntry,
+  WeeklyPayTransferorSettings,
+  WeeklyPayTransferorUpsertInput,
   WorkerSettings,
 } from "./weekly-pay-types.js";
+import type { SmtbCsvBuildInput } from "./weekly-pay-smtb-csv.js";
+
+export type WeeklyPayCsvPayload = SmtbCsvBuildInput & {
+  batchId: string;
+  contentFingerprint: string;
+};
 
 export type WeeklyPayPorts = {
   applications: {
@@ -56,10 +69,59 @@ export type WeeklyPayPorts = {
       orgId: string,
       input: UpsertWorkerSettingsInput,
     ) => Promise<WorkerSettings>;
-    /** Payer/manage only. Never used for normal UI display. */
+    /** Not used for Data API decrypt; Phase 6 CSV uses payments.loadCsvPayload. */
     decryptApplicationAccountNumber: (
       orgId: string,
       applicationId: string,
     ) => Promise<string>;
+  };
+  payments: {
+    getTransferorSettings: (orgId: string) => Promise<WeeklyPayTransferorSettings | null>;
+    upsertTransferorSettings: (
+      orgId: string,
+      input: WeeklyPayTransferorUpsertInput,
+    ) => Promise<WeeklyPayTransferorSettings>;
+    listBatches: (orgId: string) => Promise<WeeklyPayPaymentBatch[]>;
+    getBatch: (orgId: string, batchId: string) => Promise<WeeklyPayPaymentBatch | null>;
+    listBatchItems: (
+      orgId: string,
+      batchId: string,
+    ) => Promise<WeeklyPayPaymentBatchItemMasked[]>;
+    createBatch: (
+      orgId: string,
+      input: CreateWeeklyPayPaymentBatchInput,
+    ) => Promise<WeeklyPayPaymentBatch>;
+    cancelBatch: (orgId: string, batchId: string, reason: string) => Promise<WeeklyPayPaymentBatch>;
+    recordExport: (orgId: string, batchId: string) => Promise<WeeklyPayPaymentBatch>;
+    recordBankSubmission: (
+      orgId: string,
+      batchId: string,
+      note?: string | null,
+      bankFileRef?: string | null,
+    ) => Promise<WeeklyPayPaymentBatch>;
+    recordItemResults: (
+      orgId: string,
+      batchId: string,
+      results: WeeklyPayItemResultInput[],
+    ) => Promise<WeeklyPayPaymentBatch>;
+    resolveUnknownItem: (
+      orgId: string,
+      itemId: string,
+      outcome: "failed" | "cancelled",
+      reason?: string | null,
+    ) => Promise<WeeklyPayPaymentBatchItemMasked>;
+    listSettlementLedger: (
+      orgId: string,
+      staffId?: string,
+    ) => Promise<WeeklyPaySettlementLedgerEntry[]>;
+    /**
+     * Server-only: load decrypted CSV payload via service_role RPC.
+     * Must only be called after JWT authz for actorStaffId.
+     */
+    loadCsvPayload: (
+      orgId: string,
+      batchId: string,
+      actorStaffId: string,
+    ) => Promise<WeeklyPayCsvPayload>;
   };
 };

@@ -140,3 +140,47 @@ export const UpsertWorkerSettingsSchema = z.object({
 export const BankAccountListQuerySchema = z.object({
   staffId: z.string().uuid().optional(),
 });
+
+export const UpsertWeeklyPayTransferorSettingsSchema = z.object({
+  consignorCode: z.string().regex(/^20\d{8}$/),
+  requesterNameKana: z.string().trim().min(1).max(40),
+  sourceBankCode: z.string().regex(/^\d{4}$/),
+  sourceBankNameKana: z.string().trim().max(15).nullable().optional(),
+  sourceBranchCode: z.string().regex(/^\d{3}$/),
+  sourceBranchNameKana: z.string().trim().max(15).nullable().optional(),
+  sourceAccountType: z.enum(["ordinary", "current"]),
+  sourceAccountNumber: z.string().regex(/^\d{7}$/),
+});
+
+export const CreateWeeklyPayPaymentBatchSchema = z.object({
+  applicationIds: z.array(z.string().uuid()).min(1),
+  bankTransferDate: isoDate,
+  scheduledPaymentDate: isoDate.nullable().optional(),
+});
+
+export const CancelWeeklyPayPaymentBatchSchema = z.object({
+  reason: z.string().trim().min(1).max(1000),
+});
+
+export const RecordBankSubmissionSchema = z.object({
+  note: z.string().trim().max(2000).nullable().optional(),
+  bankFileRef: z.string().trim().max(200).nullable().optional(),
+});
+
+export const WeeklyPayItemResultSchema = z.object({
+  itemId: z.string().uuid(),
+  outcome: z.enum(["paid", "failed", "unknown"]),
+  paidOn: isoDate.optional(),
+  bankTransactionRef: z.string().trim().min(1).max(120).optional(),
+  evidenceNote: z.string().trim().min(1).max(2000).optional(),
+  failureReason: z.string().trim().max(500).optional(),
+});
+
+export const RecordWeeklyPayItemResultsSchema = z.object({
+  results: z.array(WeeklyPayItemResultSchema).min(1),
+});
+
+export const ResolveUnknownItemSchema = z.object({
+  outcome: z.enum(["failed", "cancelled"]),
+  reason: z.string().trim().max(500).optional(),
+});

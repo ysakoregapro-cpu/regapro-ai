@@ -2,15 +2,24 @@ import type { PlatformPermission } from "@regapro/shared";
 import { WeeklyPayDomainError } from "./weekly-pay-errors.js";
 import { assertNotSelfReview, assertReturnReason } from "./weekly-pay-lifecycle.js";
 import type { WeeklyPayPorts } from "./weekly-pay-ports.js";
+import { isJapaneseBankBusinessDay } from "./weekly-pay-business-day.js";
+import { buildSmtbSogoCsvBuffer, toHalfWidthKatakanaForSmtb } from "./weekly-pay-smtb-csv.js";
 import type {
   ApplicationBankSnapshotMasked,
   BankAccountMasked,
   CreateWeeklyApplicationDraftInput,
+  CreateWeeklyPayPaymentBatchInput,
   UpsertBankAccountInput,
   UpsertWorkerSettingsInput,
   WeeklyApplication,
   WeeklyApplicationListQuery,
+  WeeklyPayItemResultInput,
+  WeeklyPayPaymentBatch,
+  WeeklyPayPaymentBatchItemMasked,
   WeeklyPayPolicy,
+  WeeklyPaySettlementLedgerEntry,
+  WeeklyPayTransferorSettings,
+  WeeklyPayTransferorUpsertInput,
   WorkerSettings,
 } from "./weekly-pay-types.js";
 
@@ -324,7 +333,196 @@ export async function decryptApplicationBankAccountNumber(
   if (!canDecryptBankAccount(actor)) {
     throw new WeeklyPayDomainError("FORBIDDEN", "weekly_pay.pay required to decrypt");
   }
-  // Ensure the application is visible in-org before decrypt.
-  await getWeeklyApplication(ports, actor, applicationId);
-  return ports.bank.decryptApplicationAccountNumber(actor.orgId, applicationId);
+  // Generic decrypt remains unavailable; use CSV download path.
+  void ports;
+  void applicationId;
+  throw new WeeklyPayDomainError(
+    "FORBIDDEN",
+    "bank account decrypt is only available via authorized CSV download",
+  );
+}
+
+function requirePay(actor: WeeklyPayActor): void {
+  requireStaff(actor);
+  if (!canPayWeeklyPay(actor)) {
+    throw new WeeklyPayDomainError("FORBIDDEN", "weekly_pay.pay required");
+  }
+}
+
+export async function getTransferorSettings(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+): Promise<WeeklyPayTransferorSettings | null> {
+  requirePay(actor);
+  return ports.payments.getTransferorSettings(actor.orgId);
+}
+
+export async function upsertTransferorSettings(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  input: WeeklyPayTransferorUpsertInput,
+): Promise<WeeklyPayTransferorSettings> {
+  requirePay(actor);
+  // Validate half-width encodability before persistence.
+  toHalfWidthKatakanaForSmtb(input.requesterNameKana);
+  return ports.payments.upsertTransferorSettings(actor.orgId, {
+    ...input,
+    requesterNameKana: toHalfWidthKatakanaForSmtb(input.requesterNameKana),
+    sourceBankNameKana: input.sourceBankNameKana
+      ? toHalfWidthKatakanaForSmtb(input.sourceBankNameKana)
+      : null,
+    sourceBranchNameKana: input.sourceBranchNameKana
+      ? toHalfWidthKatakanaForSmtb(input.sourceBranchNameKana)
+      : null,
+  });
+}
+
+export async function listPaymentBatches(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+): Promise<WeeklyPayPaymentBatch[]> {
+  requirePay(actor);
+  return ports.payments.listBatches(actor.orgId);
+}
+
+export async function getPaymentBatch(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  batchId: string,
+): Promise<WeeklyPayPaymentBatch> {
+  requirePay(actor);
+  const batch = await ports.payments.getBatch(actor.orgId, batchId);
+  if (!batch) throw new WeeklyPayDomainError("NOT_FOUND", "payment batch");
+  const items = await ports.payments.listBatchItems(actor.orgId, batchId);
+  return { ...batch, items };
+}
+
+export async function createPaymentBatch(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  input: CreateWeeklyPayPaymentBatchInput,
+): Promise<WeeklyPayPaymentBatch> {
+  requirePay(actor);
+  if (!isJapaneseBankBusinessDay(input.bankTransferDate)) {
+    throw new WeeklyPayDomainError(
+      "INVALID_TRANSFER_DATE",
+      "bankTransferDate is not a Japanese bank business day",
+    );
+  }
+  const settings = await ports.payments.getTransferorSettings(actor.orgId);
+  if (!settings) {
+    throw new WeeklyPayDomainError(
+      "TRANSFEROR_UNSET",
+      "configure transferor settings before creating a payment batch",
+    );
+  }
+  return ports.payments.createBatch(actor.orgId, input);
+}
+
+export async function cancelPaymentBatch(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  batchId: string,
+  reason: string,
+): Promise<WeeklyPayPaymentBatch> {
+  requirePay(actor);
+  return ports.payments.cancelBatch(actor.orgId, batchId, reason);
+}
+
+export async function recordPaymentBatchBankSubmission(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  batchId: string,
+  note?: string | null,
+  bankFileRef?: string | null,
+): Promise<WeeklyPayPaymentBatch> {
+  requirePay(actor);
+  return ports.payments.recordBankSubmission(actor.orgId, batchId, note, bankFileRef);
+}
+
+export async function recordPaymentBatchItemResults(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  batchId: string,
+  results: WeeklyPayItemResultInput[],
+): Promise<WeeklyPayPaymentBatch> {
+  requirePay(actor);
+  return ports.payments.recordItemResults(actor.orgId, batchId, results);
+}
+
+export async function resolveUnknownPaymentItem(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  itemId: string,
+  outcome: "failed" | "cancelled",
+  reason?: string | null,
+): Promise<WeeklyPayPaymentBatchItemMasked> {
+  requirePay(actor);
+  return ports.payments.resolveUnknownItem(actor.orgId, itemId, outcome, reason);
+}
+
+export async function listSettlementLedger(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  staffId?: string,
+): Promise<WeeklyPaySettlementLedgerEntry[]> {
+  requireStaff(actor);
+  if (canPayWeeklyPay(actor)) {
+    return ports.payments.listSettlementLedger(actor.orgId, staffId);
+  }
+  if (!canViewWeeklyPay(actor)) {
+    throw new WeeklyPayDomainError("FORBIDDEN", "weekly_pay view permission required");
+  }
+  return ports.payments.listSettlementLedger(actor.orgId, actor.staffId);
+}
+
+/**
+ * Build SMTB CSV bytes. Uses service_role decrypt payload after domain authz.
+ * Does not mark paid. Caller must set Cache-Control: no-store.
+ */
+export async function downloadPaymentBatchCsv(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  batchId: string,
+): Promise<{
+  filename: string;
+  contentType: string;
+  buffer: Buffer;
+  batch: WeeklyPayPaymentBatch;
+}> {
+  requirePay(actor);
+  const payload = await ports.payments.loadCsvPayload(
+    actor.orgId,
+    batchId,
+    actor.staffId,
+  );
+  const destinations = payload.destinations.map((d) => ({
+    ...d,
+    accountHolderKana: toHalfWidthKatakanaForSmtb(d.accountHolderKana),
+    bankName: d.bankName ? toHalfWidthKatakanaForSmtb(d.bankName) : d.bankName,
+    branchName: d.branchName ? toHalfWidthKatakanaForSmtb(d.branchName) : d.branchName,
+  }));
+  const built = buildSmtbSogoCsvBuffer({
+    bankTransferDate: payload.bankTransferDate,
+    transferor: {
+      ...payload.transferor,
+      requesterNameKana: toHalfWidthKatakanaForSmtb(payload.transferor.requesterNameKana),
+      sourceBankNameKana: payload.transferor.sourceBankNameKana
+        ? toHalfWidthKatakanaForSmtb(payload.transferor.sourceBankNameKana)
+        : payload.transferor.sourceBankNameKana,
+      sourceBranchNameKana: payload.transferor.sourceBranchNameKana
+        ? toHalfWidthKatakanaForSmtb(payload.transferor.sourceBranchNameKana)
+        : payload.transferor.sourceBranchNameKana,
+    },
+    destinations,
+    expectedItemCount: payload.expectedItemCount,
+    expectedTotalAmountYen: payload.expectedTotalAmountYen,
+  });
+  const batch = await ports.payments.recordExport(actor.orgId, batchId);
+  return {
+    filename: `soufuri_${batch.bankTransferDate.replaceAll("-", "")}_${batch.id.slice(0, 8)}.csv`,
+    contentType: "text/csv; charset=Shift_JIS",
+    buffer: built.buffer,
+    batch,
+  };
 }

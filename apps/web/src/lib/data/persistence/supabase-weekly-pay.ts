@@ -6,17 +6,26 @@ import {
   type BankAccountStatus,
   type BankAccountType,
   type CreateWeeklyApplicationDraftInput,
+  type CreateWeeklyPayPaymentBatchInput,
   type UpsertBankAccountInput,
   type UpsertWorkerSettingsInput,
   type WeeklyApplication,
   type WeeklyApplicationItem,
   type WeeklyApplicationListQuery,
   type WeeklyApplicationStatus,
+  type WeeklyPayBatchStatus,
   type WeeklyPayDailyCapScope,
   type WeeklyPayItemCalculationTrace,
+  type WeeklyPayItemOutcome,
+  type WeeklyPayItemResultInput,
+  type WeeklyPayPaymentBatch,
+  type WeeklyPayPaymentBatchItemMasked,
   type WeeklyPayPolicy,
   type WeeklyPayPolicySnapshot,
   type WeeklyPayPorts,
+  type WeeklyPaySettlementLedgerEntry,
+  type WeeklyPayTransferorSettings,
+  type WeeklyPayTransferorUpsertInput,
   type WorkerSettings,
 } from "@regapro/work";
 
@@ -80,6 +89,21 @@ function throwFromRpc(error: RpcError): never {
   }
   if (/WEEKLY_PAY_BANK_KEY_MISSING/i.test(msg)) {
     throw new WeeklyPayDomainError("BANK_KEY_MISSING", msg);
+  }
+  if (/WEEKLY_PAY_TRANSFEROR_UNSET/i.test(msg)) {
+    throw new WeeklyPayDomainError("TRANSFEROR_UNSET", msg);
+  }
+  if (/WEEKLY_PAY_INVALID_TRANSFEROR/i.test(msg)) {
+    throw new WeeklyPayDomainError("INVALID_TRANSFEROR", msg);
+  }
+  if (/WEEKLY_PAY_INVALID_TRANSFER_DATE/i.test(msg)) {
+    throw new WeeklyPayDomainError("INVALID_TRANSFER_DATE", msg);
+  }
+  if (/WEEKLY_PAY_DUPLICATE_BATCH|WEEKLY_PAY_ALREADY_PAID/i.test(msg)) {
+    throw new WeeklyPayDomainError("DUPLICATE_BATCH", msg);
+  }
+  if (/WEEKLY_PAY_TOTAL_MISMATCH/i.test(msg)) {
+    throw new WeeklyPayDomainError("TOTAL_MISMATCH", msg);
   }
   if (/WEEKLY_PAY_/i.test(msg)) {
     throw new WeeklyPayDomainError("INVALID_SELECTION", msg);
@@ -244,7 +268,93 @@ function mapApplication(row: Record<string, unknown>): WeeklyApplication {
   };
 }
 
-export function createSupabaseWeeklyPayPorts(client: Client): WeeklyPayPorts {
+function mapTransferor(row: Record<string, unknown>): WeeklyPayTransferorSettings {
+  return {
+    orgId: String(row.org_id),
+    consignorCode: String(row.consignor_code),
+    requesterNameKana: String(row.requester_name_kana),
+    sourceBankCode: String(row.source_bank_code),
+    sourceBankNameKana: row.source_bank_name_kana
+      ? String(row.source_bank_name_kana)
+      : null,
+    sourceBranchCode: String(row.source_branch_code),
+    sourceBranchNameKana: row.source_branch_name_kana
+      ? String(row.source_branch_name_kana)
+      : null,
+    sourceAccountType: String(row.source_account_type) as BankAccountType,
+    sourceAccountNumberLast4: String(
+      row.source_account_number_last4 ??
+        (typeof row.source_account_number === "string"
+          ? String(row.source_account_number).slice(-4)
+          : ""),
+    ),
+    updatedAt: String(row.updated_at),
+  };
+}
+
+function mapBatch(row: Record<string, unknown>): WeeklyPayPaymentBatch {
+  return {
+    id: String(row.id),
+    orgId: String(row.org_id),
+    status: String(row.status) as WeeklyPayBatchStatus,
+    bankTransferDate: String(row.bank_transfer_date),
+    scheduledPaymentDate: row.scheduled_payment_date
+      ? String(row.scheduled_payment_date)
+      : null,
+    formatCode: String(row.format_code),
+    itemCount: Number(row.item_count),
+    totalAmountYen: Number(row.total_amount_yen),
+    contentFingerprint: String(row.content_fingerprint),
+    exportCount: Number(row.export_count ?? 0),
+    exportedAt: row.exported_at ? String(row.exported_at) : null,
+    bankSubmittedAt: row.bank_submitted_at ? String(row.bank_submitted_at) : null,
+    bankSubmissionNote: row.bank_submission_note
+      ? String(row.bank_submission_note)
+      : null,
+    bankFileRef: row.bank_file_ref ? String(row.bank_file_ref) : null,
+    createdByStaffId: String(row.created_by_staff_id),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    cancelledAt: row.cancelled_at ? String(row.cancelled_at) : null,
+    cancelReason: row.cancel_reason ? String(row.cancel_reason) : null,
+    closedAt: row.closed_at ? String(row.closed_at) : null,
+  };
+}
+
+function mapBatchItem(row: Record<string, unknown>): WeeklyPayPaymentBatchItemMasked {
+  const bank = (row.bank_snapshot ?? {}) as Record<string, unknown>;
+  return {
+    id: String(row.id),
+    batchId: String(row.batch_id),
+    orgId: String(row.org_id),
+    applicationId: String(row.application_id),
+    staffId: String(row.staff_id),
+    amountYen: Number(row.amount_yen),
+    weekStart: String(row.week_start),
+    weekEnd: String(row.week_end),
+    applicationPaymentDate: String(row.application_payment_date),
+    workRecordIds: Array.isArray(row.work_record_ids)
+      ? (row.work_record_ids as string[])
+      : [],
+    bankCode: String(bank.bankCode ?? ""),
+    branchCode: String(bank.branchCode ?? ""),
+    accountType: String(bank.accountType ?? "ordinary") as BankAccountType,
+    accountNumberLast4: String(bank.accountNumberLast4 ?? ""),
+    accountHolderKana: String(bank.accountHolderKana ?? ""),
+    outcome: String(row.outcome) as WeeklyPayItemOutcome,
+    paidOn: row.paid_on ? String(row.paid_on) : null,
+    bankTransactionRef: row.bank_transaction_ref
+      ? String(row.bank_transaction_ref)
+      : null,
+    failureReason: row.failure_reason ? String(row.failure_reason) : null,
+  };
+}
+
+export function createSupabaseWeeklyPayPorts(
+  client: Client,
+  options?: { serviceClient?: Client },
+): WeeklyPayPorts {
+  const serviceClient = options?.serviceClient;
   return {
     applications: {
       async list(orgId, query: WeeklyApplicationListQuery) {
@@ -416,12 +526,218 @@ export function createSupabaseWeeklyPayPorts(client: Client): WeeklyPayPorts {
         return mapWorkerSettings(data);
       },
       async decryptApplicationAccountNumber(..._args: [string, string]) {
-        // Phase 5.1: EXECUTE revoked for API roles until Phase 6 CSV/audit path.
         void _args;
         throw new WeeklyPayDomainError(
           "FORBIDDEN",
-          "bank account decrypt is not available until Phase 6",
+          "bank account decrypt is only available via authorized CSV download",
         );
+      },
+    },
+    payments: {
+      async getTransferorSettings(..._args: [string]) {
+        void _args;
+        const { data, error } = await client.rpc(
+          "get_weekly_pay_transferor_settings_masked",
+          {},
+        );
+        if (error) throwFromRpc(error);
+        if (!data) return null;
+        return mapTransferor(data as Record<string, unknown>);
+      },
+      async upsertTransferorSettings(_orgId, input: WeeklyPayTransferorUpsertInput) {
+        const { data, error } = await client.rpc("upsert_weekly_pay_transferor_settings", {
+          p_consignor_code: input.consignorCode,
+          p_requester_name_kana: input.requesterNameKana,
+          p_source_bank_code: input.sourceBankCode,
+          p_source_bank_name_kana: input.sourceBankNameKana ?? null,
+          p_source_branch_code: input.sourceBranchCode,
+          p_source_branch_name_kana: input.sourceBranchNameKana ?? null,
+          p_source_account_type: input.sourceAccountType,
+          p_source_account_number: input.sourceAccountNumber,
+        });
+        if (error) throwFromRpc(error);
+        if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "transferor settings");
+        return mapTransferor(data);
+      },
+      async listBatches(orgId) {
+        const { data, error } = await client
+          .from("weekly_pay_payment_batches")
+          .select("*")
+          .eq("org_id", orgId)
+          .order("created_at", { ascending: false });
+        if (error) throwFromRpc(error);
+        return (data ?? []).map(mapBatch);
+      },
+      async getBatch(orgId, batchId) {
+        const { data, error } = await client
+          .from("weekly_pay_payment_batches")
+          .select("*")
+          .eq("org_id", orgId)
+          .eq("id", batchId)
+          .maybeSingle();
+        if (error) throwFromRpc(error);
+        if (!data) return null;
+        return mapBatch(data);
+      },
+      async listBatchItems(orgId, batchId) {
+        const { data, error } = await client
+          .from("weekly_pay_payment_batch_items")
+          .select(
+            "id, batch_id, org_id, application_id, staff_id, amount_yen, week_start, week_end, application_payment_date, work_record_ids, bank_snapshot, outcome, paid_on, bank_transaction_ref, failure_reason",
+          )
+          .eq("org_id", orgId)
+          .eq("batch_id", batchId)
+          .order("created_at", { ascending: true });
+        if (error) throwFromRpc(error);
+        return (data ?? []).map(mapBatchItem);
+      },
+      async createBatch(_orgId, input: CreateWeeklyPayPaymentBatchInput) {
+        const { data, error } = await client.rpc("create_weekly_pay_payment_batch", {
+          p_application_ids: input.applicationIds,
+          p_bank_transfer_date: input.bankTransferDate,
+          p_scheduled_payment_date: input.scheduledPaymentDate ?? null,
+        });
+        if (error) throwFromRpc(error);
+        if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "payment batch");
+        return mapBatch(data);
+      },
+      async cancelBatch(_orgId, batchId, reason) {
+        const { data, error } = await client.rpc("cancel_weekly_pay_payment_batch", {
+          p_batch_id: batchId,
+          p_reason: reason,
+        });
+        if (error) throwFromRpc(error);
+        if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "payment batch");
+        return mapBatch(data);
+      },
+      async recordExport(_orgId, batchId) {
+        const { data, error } = await client.rpc("record_weekly_pay_batch_export", {
+          p_batch_id: batchId,
+        });
+        if (error) throwFromRpc(error);
+        if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "payment batch");
+        return mapBatch(data);
+      },
+      async recordBankSubmission(_orgId, batchId, note, bankFileRef) {
+        const { data, error } = await client.rpc("record_weekly_pay_batch_bank_submission", {
+          p_batch_id: batchId,
+          p_note: note ?? null,
+          p_bank_file_ref: bankFileRef ?? null,
+        });
+        if (error) throwFromRpc(error);
+        if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "payment batch");
+        return mapBatch(data);
+      },
+      async recordItemResults(_orgId, batchId, results: WeeklyPayItemResultInput[]) {
+        const { data, error } = await client.rpc("record_weekly_pay_batch_item_results", {
+          p_batch_id: batchId,
+          p_results: results.map((r) => ({
+            itemId: r.itemId,
+            outcome: r.outcome,
+            paidOn: r.paidOn,
+            bankTransactionRef: r.bankTransactionRef,
+            evidenceNote: r.evidenceNote,
+            failureReason: r.failureReason,
+          })),
+        });
+        if (error) throwFromRpc(error);
+        if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "payment batch");
+        return mapBatch(data);
+      },
+      async resolveUnknownItem(_orgId, itemId, outcome, reason) {
+        const { data, error } = await client.rpc("resolve_weekly_pay_unknown_item", {
+          p_item_id: itemId,
+          p_outcome: outcome,
+          p_reason: reason ?? null,
+        });
+        if (error) throwFromRpc(error);
+        if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "batch item");
+        return mapBatchItem(data);
+      },
+      async listSettlementLedger(orgId, staffId) {
+        let q = client
+          .from("weekly_pay_settlement_ledger")
+          .select("*")
+          .eq("org_id", orgId)
+          .order("paid_on", { ascending: false });
+        if (staffId) q = q.eq("staff_id", staffId);
+        const { data, error } = await q;
+        if (error) throwFromRpc(error);
+        return (data ?? []).map(
+          (row): WeeklyPaySettlementLedgerEntry => ({
+            id: String(row.id),
+            orgId: String(row.org_id),
+            staffId: String(row.staff_id),
+            applicationId: String(row.application_id),
+            batchItemId: String(row.batch_item_id),
+            workRecordIds: Array.isArray(row.work_record_ids)
+              ? (row.work_record_ids as string[])
+              : [],
+            weekStart: String(row.week_start),
+            weekEnd: String(row.week_end),
+            amountYen: Number(row.amount_yen),
+            paidOn: String(row.paid_on),
+            confirmedByStaffId: String(row.confirmed_by_staff_id),
+            bankTransactionRef: row.bank_transaction_ref
+              ? String(row.bank_transaction_ref)
+              : null,
+            evidenceNote: row.evidence_note ? String(row.evidence_note) : null,
+            createdAt: String(row.created_at),
+          }),
+        );
+      },
+      async loadCsvPayload(_orgId, batchId, actorStaffId) {
+        if (!serviceClient) {
+          throw new WeeklyPayDomainError(
+            "FORBIDDEN",
+            "CSV payload requires server service client",
+          );
+        }
+        const { data, error } = await serviceClient.rpc(
+          "regapro_service_load_batch_csv_payload",
+          {
+            p_batch_id: batchId,
+            p_actor_staff_id: actorStaffId,
+          },
+        );
+        if (error) throwFromRpc(error);
+        if (!data || typeof data !== "object") {
+          throw new WeeklyPayDomainError("NOT_FOUND", "csv payload");
+        }
+        const raw = data as Record<string, unknown>;
+        const transferor = (raw.transferor ?? {}) as Record<string, unknown>;
+        const items = (raw.items as Record<string, unknown>[]) ?? [];
+        return {
+          batchId: String(raw.batchId),
+          bankTransferDate: String(raw.bankTransferDate),
+          contentFingerprint: String(raw.contentFingerprint),
+          expectedItemCount: Number(raw.itemCount),
+          expectedTotalAmountYen: Number(raw.totalAmountYen),
+          transferor: {
+            consignorCode: String(transferor.consignorCode),
+            requesterNameKana: String(transferor.requesterNameKana),
+            sourceBankCode: String(transferor.sourceBankCode),
+            sourceBankNameKana: transferor.sourceBankNameKana
+              ? String(transferor.sourceBankNameKana)
+              : null,
+            sourceBranchCode: String(transferor.sourceBranchCode),
+            sourceBranchNameKana: transferor.sourceBranchNameKana
+              ? String(transferor.sourceBranchNameKana)
+              : null,
+            sourceAccountType: String(transferor.sourceAccountType) as BankAccountType,
+            sourceAccountNumber: String(transferor.sourceAccountNumber),
+          },
+          destinations: items.map((it) => ({
+            bankCode: String(it.bank_code),
+            bankName: it.bank_name ? String(it.bank_name) : null,
+            branchCode: String(it.branch_code),
+            branchName: it.branch_name ? String(it.branch_name) : null,
+            accountType: String(it.account_type) as BankAccountType,
+            accountNumber: String(it.account_number),
+            accountHolderKana: String(it.account_holder_kana),
+            amountYen: Number(it.amount_yen),
+          })),
+        };
       },
     },
   };

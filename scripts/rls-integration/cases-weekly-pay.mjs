@@ -12,6 +12,10 @@ const TABLES = [
   "bank_accounts",
   "worker_settings",
   "application_bank_snapshots",
+  "weekly_pay_transferor_settings",
+  "weekly_pay_payment_batches",
+  "weekly_pay_payment_batch_items",
+  "weekly_pay_settlement_ledger",
 ];
 
 function tokyoToday() {
@@ -55,6 +59,8 @@ async function roleIdByKey(admin, key) {
 export async function setupWeeklyPayFixtures(fx, platform, workRecord) {
   const { admin, ctx, runId } = fx;
   const orgId = ctx.org.id;
+  // Ensure prior failed runs do not leave active transferor/batches for this org.
+  await cleanupWeeklyPayFixtures(admin, { orgId, staffWorker: platform.staffPartTime });
   const today = tokyoToday();
   const ws = weekStartMonday(today);
   // Prefer mid-week dates still before Sunday cutoff.
@@ -185,8 +191,40 @@ export async function setupWeeklyPayFixtures(fx, platform, workRecord) {
   return w;
 }
 
+async function mustDelete(label, result) {
+  if (result.error) {
+    throw new Error(`cleanup ${label}: ${result.error.message}`);
+  }
+}
+
 export async function cleanupWeeklyPayFixtures(admin, w) {
   if (!w) return;
+  if (w.orgId) {
+    await mustDelete(
+      "settlement_ledger",
+      await admin.from("weekly_pay_settlement_ledger").delete().eq("org_id", w.orgId),
+    );
+    const { data: batches, error: batchListErr } = await admin
+      .from("weekly_pay_payment_batches")
+      .select("id")
+      .eq("org_id", w.orgId);
+    if (batchListErr) throw new Error(`cleanup list batches: ${batchListErr.message}`);
+    const batchIds = (batches ?? []).map((b) => b.id);
+    if (batchIds.length) {
+      await mustDelete(
+        "batch_items",
+        await admin.from("weekly_pay_payment_batch_items").delete().in("batch_id", batchIds),
+      );
+      await mustDelete(
+        "batches",
+        await admin.from("weekly_pay_payment_batches").delete().in("id", batchIds),
+      );
+    }
+    await mustDelete(
+      "transferor",
+      await admin.from("weekly_pay_transferor_settings").delete().eq("org_id", w.orgId),
+    );
+  }
   if (w.appIds?.length) {
     await admin.from("application_bank_snapshots").delete().in("application_id", w.appIds);
     await admin.from("weekly_application_items").delete().in("application_id", w.appIds);
@@ -532,6 +570,10 @@ export async function runWeeklyPayCases(reporter, fx, weekly, env) {
         if (row.grantee === "anon" && row.can_execute) return true;
         if (row.grantee !== "anon" && !row.can_execute) return true;
       }
+      if (row.kind === "service_only") {
+        if (row.grantee === "service_role" && !row.can_execute) return true;
+        if (row.grantee !== "service_role" && row.can_execute) return true;
+      }
       if (row.kind === "internal" && row.can_execute) return true;
       return false;
     });
@@ -587,12 +629,12 @@ export async function runWeeklyPayCases(reporter, fx, weekly, env) {
   });
   if (denied(payerDecrypt.error)) {
     reporter.pass(
-      "weekly pay payer decrypt EXECUTE denied until Phase 6",
+      "weekly pay payer decrypt Data API EXECUTE denied (CSV is service_only)",
       payerDecrypt.error.message,
     );
   } else {
     reporter.fail(
-      "weekly pay payer decrypt EXECUTE denied until Phase 6",
+      "weekly pay payer decrypt Data API EXECUTE denied (CSV is service_only)",
       payerDecrypt.error?.message ?? String(payerDecrypt.data),
     );
   }
@@ -657,6 +699,202 @@ export async function runWeeklyPayCases(reporter, fx, weekly, env) {
     );
   } else {
     reporter.fail("weekly pay snapshot update blocked", "update succeeded");
+  }
+
+  // --- Phase 6 payment batch ---
+  const noXfer = await reviewer.client.rpc("create_weekly_pay_payment_batch", {
+    p_application_ids: [draft.data.id],
+    p_bank_transfer_date: "2026-10-02",
+    p_scheduled_payment_date: null,
+  });
+  if (/TRANSFEROR_UNSET/i.test(noXfer.error?.message ?? "")) {
+    reporter.pass("weekly pay batch blocked without transferor", noXfer.error.message);
+  } else {
+    reporter.fail(
+      "weekly pay batch blocked without transferor",
+      noXfer.error?.message ?? "succeeded without transferor",
+    );
+  }
+
+  const xfer = await reviewer.client.rpc("upsert_weekly_pay_transferor_settings", {
+    p_consignor_code: "2098765432",
+    p_requester_name_kana: "ﾚｶﾞﾌﾟﾛ(ｶ",
+    p_source_bank_code: "0038",
+    p_source_bank_name_kana: null,
+    p_source_branch_code: "106",
+    p_source_branch_name_kana: null,
+    p_source_account_type: "ordinary",
+    p_source_account_number: "7654321",
+  });
+  if (xfer.error) {
+    reporter.fail("weekly pay transferor upsert", xfer.error.message);
+  } else if (xfer.data?.source_account_number_last4 === "4321" && !xfer.data.source_account_number) {
+    reporter.pass("weekly pay transferor upsert", "masked last4");
+  } else {
+    reporter.fail("weekly pay transferor upsert", JSON.stringify(Object.keys(xfer.data ?? {})));
+  }
+
+  const holidayBatch = await reviewer.client.rpc("create_weekly_pay_payment_batch", {
+    p_application_ids: [draft.data.id],
+    p_bank_transfer_date: "2026-11-03",
+    p_scheduled_payment_date: null,
+  });
+  if (/INVALID_TRANSFER_DATE/i.test(holidayBatch.error?.message ?? "")) {
+    reporter.pass("weekly pay holiday transfer date denied", holidayBatch.error.message);
+  } else {
+    reporter.fail(
+      "weekly pay holiday transfer date denied",
+      holidayBatch.error?.message ?? "holiday accepted",
+    );
+  }
+
+  const workerBatch = await worker.client.rpc("create_weekly_pay_payment_batch", {
+    p_application_ids: [draft.data.id],
+    p_bank_transfer_date: "2026-10-02",
+    p_scheduled_payment_date: null,
+  });
+  if (denied(workerBatch.error)) {
+    reporter.pass("weekly pay worker batch create denied", workerBatch.error.message);
+  } else {
+    reporter.fail(
+      "weekly pay worker batch create denied",
+      workerBatch.error?.message ?? "worker created batch",
+    );
+  }
+
+  const batch = await reviewer.client.rpc("create_weekly_pay_payment_batch", {
+    p_application_ids: [draft.data.id],
+    p_bank_transfer_date: "2026-10-02",
+    p_scheduled_payment_date: draft.data.payment_date,
+  });
+  if (batch.error) {
+    reporter.fail("weekly pay payment batch create", batch.error.message);
+  } else if (
+    batch.data.item_count === 1 &&
+    batch.data.total_amount_yen === draft.data.total_amount_yen &&
+    batch.data.status === "confirmed"
+  ) {
+    reporter.pass("weekly pay payment batch create", `total=${batch.data.total_amount_yen}`);
+  } else {
+    reporter.fail("weekly pay payment batch create", JSON.stringify(batch.data));
+  }
+
+  const dupBatch = await reviewer.client.rpc("create_weekly_pay_payment_batch", {
+    p_application_ids: [draft.data.id],
+    p_bank_transfer_date: "2026-10-05",
+    p_scheduled_payment_date: null,
+  });
+  if (denied(dupBatch.error) || /DUPLICATE_BATCH|ALREADY/i.test(dupBatch.error?.message ?? "")) {
+    reporter.pass("weekly pay duplicate batch denied", dupBatch.error?.message ?? "ok");
+  } else {
+    reporter.fail(
+      "weekly pay duplicate batch denied",
+      dupBatch.error?.message ?? "duplicate allowed",
+    );
+  }
+
+  const anonCsv = await anon.rpc("regapro_service_load_batch_csv_payload", {
+    p_batch_id: batch.data?.id,
+    p_actor_staff_id: weekly.staffReviewer,
+  });
+  if (denied(anonCsv.error)) {
+    reporter.pass("weekly pay anon CSV payload denied", anonCsv.error.message);
+  } else {
+    reporter.fail(
+      "weekly pay anon CSV payload denied",
+      anonCsv.error?.message ?? "anon got payload",
+    );
+  }
+
+  const authCsv = await reviewer.client.rpc("regapro_service_load_batch_csv_payload", {
+    p_batch_id: batch.data?.id,
+    p_actor_staff_id: weekly.staffReviewer,
+  });
+  if (denied(authCsv.error)) {
+    reporter.pass("weekly pay authenticated CSV payload denied", authCsv.error.message);
+  } else {
+    reporter.fail(
+      "weekly pay authenticated CSV payload denied",
+      authCsv.error?.message ?? "authenticated got payload",
+    );
+  }
+
+  if (batch.data?.id) {
+    const svcCsv = await fx.admin.rpc("regapro_service_load_batch_csv_payload", {
+      p_batch_id: batch.data.id,
+      p_actor_staff_id: weekly.staffReviewer,
+    });
+    if (
+      !svcCsv.error &&
+      svcCsv.data?.itemCount === 1 &&
+      svcCsv.data?.totalAmountYen === draft.data.total_amount_yen &&
+      Array.isArray(svcCsv.data?.items) &&
+      typeof svcCsv.data.items[0]?.account_number === "string"
+    ) {
+      reporter.pass("weekly pay service CSV payload", "decrypt ok (no log of number)");
+    } else {
+      reporter.fail(
+        "weekly pay service CSV payload",
+        svcCsv.error?.message ?? "unexpected payload shape",
+      );
+    }
+
+    const exportRec = await reviewer.client.rpc("record_weekly_pay_batch_export", {
+      p_batch_id: batch.data.id,
+    });
+    if (!exportRec.error && exportRec.data.export_count >= 1) {
+      reporter.pass("weekly pay export recorded", `count=${exportRec.data.export_count}`);
+    } else {
+      reporter.fail("weekly pay export recorded", exportRec.error?.message ?? "fail");
+    }
+
+    const items = await reviewer.client
+      .from("weekly_pay_payment_batch_items")
+      .select("id, outcome, amount_yen")
+      .eq("batch_id", batch.data.id);
+    const itemId = items.data?.[0]?.id;
+    const paid = await reviewer.client.rpc("record_weekly_pay_batch_item_results", {
+      p_batch_id: batch.data.id,
+      p_results: [
+        {
+          itemId,
+          outcome: "paid",
+          paidOn: "2026-10-02",
+          bankTransactionRef: "TEST-TX-001",
+          evidenceNote: "fixture bank inquiry confirmation",
+        },
+      ],
+    });
+    if (!paid.error && paid.data.status === "closed") {
+      reporter.pass("weekly pay item paid closes batch", paid.data.status);
+    } else {
+      reporter.fail("weekly pay item paid closes batch", paid.error?.message ?? paid.data?.status);
+    }
+
+    const ledger = await worker.client
+      .from("weekly_pay_settlement_ledger")
+      .select("application_id, amount_yen")
+      .eq("application_id", draft.data.id)
+      .maybeSingle();
+    if (ledger.data?.amount_yen === draft.data.total_amount_yen) {
+      reporter.pass("weekly pay settlement ledger visible to worker", "ok");
+    } else {
+      reporter.fail(
+        "weekly pay settlement ledger visible to worker",
+        ledger.error?.message ?? "missing",
+      );
+    }
+
+    const outsiderBatch = await outsider.client
+      .from("weekly_pay_payment_batches")
+      .select("id")
+      .eq("id", batch.data.id)
+      .maybeSingle();
+    if (!outsiderBatch.data) {
+      reporter.pass("weekly pay outsider batch denied", "0 rows");
+    } else {
+      reporter.fail("weekly pay outsider batch denied", "row visible");
+    }
   }
 
   void FIXTURE_TAG;
