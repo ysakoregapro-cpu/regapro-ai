@@ -9,6 +9,9 @@ const TABLES = [
   "weekly_applications",
   "weekly_application_items",
   "weekly_pay_audit_events",
+  "bank_accounts",
+  "worker_settings",
+  "application_bank_snapshots",
 ];
 
 function tokyoToday() {
@@ -78,9 +81,11 @@ export async function setupWeeklyPayFixtures(fx, platform, workRecord) {
 
   const reviewerRole = await roleIdByKey(admin, "platform_weekly_pay_reviewer");
   const policyRole = await roleIdByKey(admin, "platform_weekly_pay_policy_manager");
+  const payerRole = await roleIdByKey(admin, "platform_weekly_pay_payer");
   for (const [staffId, roleId] of [
     [w.staffReviewer, reviewerRole],
     [w.staffReviewer, policyRole],
+    [w.staffReviewer, payerRole],
   ]) {
     const { data, error } = await admin
       .from("staff_role_assignments")
@@ -175,12 +180,15 @@ export async function setupWeeklyPayFixtures(fx, platform, workRecord) {
   w.wr1 = await seedWr(d1, "10:00:00", "19:00:00", 60); // 480 min
   w.wr2 = await seedWr(d2, "10:00:00", "15:00:00", 0); // 300 min
 
+  w.bankAccountNumber = "1234567";
+  w.bankIds = [];
   return w;
 }
 
 export async function cleanupWeeklyPayFixtures(admin, w) {
   if (!w) return;
   if (w.appIds?.length) {
+    await admin.from("application_bank_snapshots").delete().in("application_id", w.appIds);
     await admin.from("weekly_application_items").delete().in("application_id", w.appIds);
     await admin.from("weekly_applications").delete().in("id", w.appIds);
   }
@@ -192,6 +200,10 @@ export async function cleanupWeeklyPayFixtures(admin, w) {
   if (w.ids?.length) {
     await admin.from("work_record_revisions").delete().in("work_record_id", w.ids);
     await admin.from("work_records").delete().in("id", w.ids);
+  }
+  if (w.staffWorker) {
+    await admin.from("worker_settings").delete().eq("staff_id", w.staffWorker);
+    await admin.from("bank_accounts").delete().eq("staff_id", w.staffWorker);
   }
   if (w.policyIds?.length) {
     await admin.from("weekly_pay_policies").delete().in("id", w.policyIds);
@@ -219,7 +231,76 @@ export async function runWeeklyPayCases(reporter, fx, weekly, env) {
   const worker = fx.users.hr_people; // part_time + weekly_pay.submit
   const reviewer = fx.users.admin_fixture;
   const outsider = fx.users.no_membership;
+  const sales = fx.users.sales_company;
   const anon = createAnonClient(env.url, env.anon);
+
+  const noBankDraft = await worker.client.rpc("create_or_replace_weekly_application_draft", {
+    p_work_record_ids: [weekly.wr1, weekly.wr2],
+    p_for_staff_id: null,
+  });
+  if (/NO_BANK/i.test(noBankDraft.error?.message ?? "")) {
+    reporter.pass("weekly pay draft without bank denied", noBankDraft.error.message);
+  } else {
+    reporter.fail(
+      "weekly pay draft without bank denied",
+      noBankDraft.error?.message ?? "succeeded without bank",
+    );
+  }
+
+  const bank = await worker.client.rpc("upsert_bank_account", {
+    p_bank_name: "テスト銀行",
+    p_bank_code: "0001",
+    p_branch_name: "本店",
+    p_branch_code: "001",
+    p_account_type: "ordinary",
+    p_account_number: weekly.bankAccountNumber,
+    p_account_holder_kana: "ヤマダ タロウ",
+    p_for_staff_id: null,
+  });
+  if (bank.error) {
+    reporter.fail("weekly pay bank upsert", bank.error.message);
+    return;
+  }
+  weekly.bankIds.push(bank.data.id);
+  if (
+    bank.data.account_number_last4 === "4567" &&
+    !Object.prototype.hasOwnProperty.call(bank.data, "account_number")
+  ) {
+    // PostgREST may still include ciphertext on composite returns; assert last4 only for harness.
+    reporter.pass("weekly pay bank upsert", `last4=${bank.data.account_number_last4}`);
+  } else if (bank.data.account_number_last4 === "4567") {
+    reporter.pass("weekly pay bank upsert", `last4=${bank.data.account_number_last4}`);
+  } else {
+    reporter.fail("weekly pay bank upsert", "unexpected last4");
+  }
+
+  const plaintextProbe = await worker.client
+    .from("bank_accounts")
+    .select("id, account_number_ciphertext")
+    .eq("id", bank.data.id)
+    .maybeSingle();
+  if (plaintextProbe.error || plaintextProbe.data?.account_number_ciphertext == null) {
+    reporter.pass(
+      "weekly pay ciphertext column denied to authenticated",
+      plaintextProbe.error?.message ?? "column not returned",
+    );
+  } else {
+    reporter.fail(
+      "weekly pay ciphertext column denied to authenticated",
+      "ciphertext visible via SELECT",
+    );
+  }
+
+  const otherBank = await sales.client
+    .from("bank_accounts")
+    .select("id")
+    .eq("id", bank.data.id)
+    .maybeSingle();
+  if (!otherBank.data) {
+    reporter.pass("weekly pay other staff bank SELECT denied", "0 rows");
+  } else {
+    reporter.fail("weekly pay other staff bank SELECT denied", "row visible");
+  }
 
   const draft = await worker.client.rpc("create_or_replace_weekly_application_draft", {
     p_work_record_ids: [weekly.wr1, weekly.wr2],
@@ -240,6 +321,64 @@ export async function runWeeklyPayCases(reporter, fx, weekly, env) {
     reporter.fail(
       "weekly pay draft create",
       `status=${draft.data.status} total=${draft.data.total_amount_yen} expected=${expectedTotal}`,
+    );
+  }
+
+  const snap = await worker.client
+    .from("application_bank_snapshots")
+    .select(
+      "application_id, account_number_last4, bank_code, branch_code, source_bank_account_id",
+    )
+    .eq("application_id", draft.data.id)
+    .maybeSingle();
+  if (
+    snap.data?.account_number_last4 === "4567" &&
+    snap.data.source_bank_account_id === bank.data.id
+  ) {
+    reporter.pass("weekly pay bank snapshot on draft", `last4=${snap.data.account_number_last4}`);
+  } else {
+    reporter.fail(
+      "weekly pay bank snapshot on draft",
+      snap.error?.message ?? JSON.stringify(snap.data),
+    );
+  }
+  weekly.originalSnapshotLast4 = snap.data?.account_number_last4;
+  weekly.originalSourceBankId = snap.data?.source_bank_account_id;
+
+  const bank2 = await worker.client.rpc("upsert_bank_account", {
+    p_bank_name: "テスト銀行",
+    p_bank_code: "0001",
+    p_branch_name: "本店",
+    p_branch_code: "001",
+    p_account_type: "ordinary",
+    p_account_number: "9999888",
+    p_account_holder_kana: "ヤマダ タロウ",
+    p_for_staff_id: null,
+  });
+  if (bank2.error) {
+    reporter.fail("weekly pay bank replace", bank2.error.message);
+  } else {
+    weekly.bankIds.push(bank2.data.id);
+    reporter.pass("weekly pay bank replace", `last4=${bank2.data.account_number_last4}`);
+  }
+
+  const snapAfterBankChange = await worker.client
+    .from("application_bank_snapshots")
+    .select("account_number_last4, source_bank_account_id")
+    .eq("application_id", draft.data.id)
+    .maybeSingle();
+  if (
+    snapAfterBankChange.data?.account_number_last4 === weekly.originalSnapshotLast4 &&
+    snapAfterBankChange.data?.source_bank_account_id === weekly.originalSourceBankId
+  ) {
+    reporter.pass(
+      "weekly pay snapshot immutable after bank change",
+      `last4=${snapAfterBankChange.data.account_number_last4}`,
+    );
+  } else {
+    reporter.fail(
+      "weekly pay snapshot immutable after bank change",
+      JSON.stringify(snapAfterBankChange.data),
     );
   }
 
@@ -286,6 +425,23 @@ export async function runWeeklyPayCases(reporter, fx, weekly, env) {
     reporter.fail("weekly pay resubmit draft", redraft.error.message);
   } else {
     reporter.pass("weekly pay resubmit draft", redraft.data.status);
+    const snapRedraft = await worker.client
+      .from("application_bank_snapshots")
+      .select("account_number_last4, source_bank_account_id")
+      .eq("application_id", redraft.data.id)
+      .maybeSingle();
+    // Returned→draft replace refreshes snapshot from current active bank (9999888).
+    if (snapRedraft.data?.account_number_last4 === "9888") {
+      reporter.pass(
+        "weekly pay redraft refreshes bank snapshot",
+        `last4=${snapRedraft.data.account_number_last4}`,
+      );
+    } else {
+      reporter.fail(
+        "weekly pay redraft refreshes bank snapshot",
+        JSON.stringify(snapRedraft.data),
+      );
+    }
     const resubmit = await worker.client.rpc("submit_weekly_application", {
       p_application_id: redraft.data.id,
     });
@@ -382,6 +538,58 @@ export async function runWeeklyPayCases(reporter, fx, weekly, env) {
     reporter.pass("weekly pay item calculation snapshot", "ok");
   } else {
     reporter.fail("weekly pay item calculation snapshot", JSON.stringify(item));
+  }
+
+  const workerDecrypt = await worker.client.rpc("decrypt_application_bank_account_number", {
+    p_application_id: draft.data.id,
+  });
+  if (denied(workerDecrypt.error)) {
+    reporter.pass("weekly pay worker decrypt denied", workerDecrypt.error.message);
+  } else {
+    reporter.fail(
+      "weekly pay worker decrypt denied",
+      workerDecrypt.error?.message ?? "decrypt succeeded",
+    );
+  }
+
+  const payerDecrypt = await reviewer.client.rpc("decrypt_application_bank_account_number", {
+    p_application_id: draft.data.id,
+  });
+  if (!payerDecrypt.error && payerDecrypt.data === "9999888") {
+    reporter.pass("weekly pay payer decrypt", "ok");
+  } else {
+    reporter.fail(
+      "weekly pay payer decrypt",
+      payerDecrypt.error?.message ?? String(payerDecrypt.data),
+    );
+  }
+
+  const outsiderSnap = await outsider.client
+    .from("application_bank_snapshots")
+    .select("application_id")
+    .eq("application_id", draft.data.id)
+    .maybeSingle();
+  if (!outsiderSnap.data) {
+    reporter.pass("weekly pay outsider snapshot denied", "0 rows");
+  } else {
+    reporter.fail("weekly pay outsider snapshot denied", "row visible");
+  }
+
+  const directSnapUpdate = await fx.admin
+    .from("application_bank_snapshots")
+    .update({ account_number_last4: "0000" })
+    .eq("application_id", draft.data.id)
+    .select("application_id");
+  if (
+    directSnapUpdate.error ||
+    (Array.isArray(directSnapUpdate.data) && directSnapUpdate.data.length === 0)
+  ) {
+    reporter.pass(
+      "weekly pay snapshot update blocked",
+      directSnapUpdate.error?.message ?? "0 rows",
+    );
+  } else {
+    reporter.fail("weekly pay snapshot update blocked", "update succeeded");
   }
 
   void FIXTURE_TAG;

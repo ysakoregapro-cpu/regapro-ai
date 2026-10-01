@@ -114,3 +114,29 @@ export const UpsertWeeklyPayPolicySchema = z.object({
   effectiveFrom: isoDate,
   effectiveTo: isoDate.nullable().optional(),
 });
+
+export const UpsertBankAccountSchema = z.object({
+  bankName: z.string().trim().min(1).max(80),
+  bankCode: z.string().regex(/^\d{4}$/),
+  branchName: z.string().trim().min(1).max(80),
+  branchCode: z.string().regex(/^\d{3}$/),
+  accountType: z.enum(["ordinary", "current"]),
+  accountNumber: z.string().regex(/^\d{7,8}$/),
+  accountHolderKana: z
+    .string()
+    .trim()
+    .min(1)
+    .max(60)
+    .regex(/^[ァ-ヶー　 ]+$/),
+  staffId: z.string().uuid().optional(),
+});
+
+export const UpsertWorkerSettingsSchema = z.object({
+  weeklyPayEnabled: z.boolean(),
+  activeBankAccountId: z.string().uuid().nullable().optional(),
+  staffId: z.string().uuid().optional(),
+});
+
+export const BankAccountListQuerySchema = z.object({
+  staffId: z.string().uuid().optional(),
+});

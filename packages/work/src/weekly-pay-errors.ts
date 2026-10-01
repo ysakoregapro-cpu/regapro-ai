@@ -18,6 +18,9 @@ export const WEEKLY_PAY_ERROR_CODES = [
   "CROSS_WEEK",
   "FUTURE_WORK_DATE",
   "ZERO_AMOUNT",
+  "NO_BANK",
+  "INVALID_BANK",
+  "BANK_KEY_MISSING",
 ] as const;
 
 export type WeeklyPayErrorCode = (typeof WEEKLY_PAY_ERROR_CODES)[number];

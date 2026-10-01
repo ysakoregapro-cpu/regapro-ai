@@ -1,8 +1,13 @@
 import type {
+  ApplicationBankSnapshotMasked,
+  BankAccountMasked,
   CreateWeeklyApplicationDraftInput,
+  UpsertBankAccountInput,
+  UpsertWorkerSettingsInput,
   WeeklyApplication,
   WeeklyApplicationListQuery,
   WeeklyPayPolicy,
+  WorkerSettings,
 } from "./weekly-pay-types.js";
 
 export type WeeklyPayPorts = {
@@ -20,6 +25,10 @@ export type WeeklyPayPorts = {
       reason: string,
     ) => Promise<WeeklyApplication>;
     approve: (orgId: string, applicationId: string) => Promise<WeeklyApplication>;
+    getBankSnapshot: (
+      orgId: string,
+      applicationId: string,
+    ) => Promise<ApplicationBankSnapshotMasked | null>;
   };
   policies: {
     listActive: (orgId: string) => Promise<WeeklyPayPolicy[]>;
@@ -37,5 +46,20 @@ export type WeeklyPayPorts = {
         effectiveTo?: string | null;
       },
     ) => Promise<WeeklyPayPolicy>;
+  };
+  bank: {
+    listMasked: (orgId: string, staffId?: string) => Promise<BankAccountMasked[]>;
+    upsert: (orgId: string, input: UpsertBankAccountInput) => Promise<BankAccountMasked>;
+    deactivate: (orgId: string, bankAccountId: string) => Promise<BankAccountMasked>;
+    getWorkerSettings: (orgId: string, staffId: string) => Promise<WorkerSettings | null>;
+    upsertWorkerSettings: (
+      orgId: string,
+      input: UpsertWorkerSettingsInput,
+    ) => Promise<WorkerSettings>;
+    /** Payer/manage only. Never used for normal UI display. */
+    decryptApplicationAccountNumber: (
+      orgId: string,
+      applicationId: string,
+    ) => Promise<string>;
   };
 };

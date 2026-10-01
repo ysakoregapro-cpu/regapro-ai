@@ -54,19 +54,41 @@ function actor(
   return { staffId, orgId: "org-1", permissions };
 }
 
+function emptyBankPorts(): WeeklyPayPorts["bank"] {
+  return {
+    listMasked: vi.fn(),
+    upsert: vi.fn(),
+    deactivate: vi.fn(),
+    getWorkerSettings: vi.fn(),
+    upsertWorkerSettings: vi.fn(),
+    decryptApplicationAccountNumber: vi.fn(),
+  };
+}
+
+function portsWith(
+  applications: Partial<WeeklyPayPorts["applications"]>,
+): WeeklyPayPorts {
+  return {
+    applications: {
+      list: vi.fn(),
+      getById: vi.fn(),
+      createOrReplaceDraft: vi.fn(),
+      submit: vi.fn(),
+      returnApplication: vi.fn(),
+      approve: vi.fn(),
+      getBankSnapshot: vi.fn(),
+      ...applications,
+    },
+    policies: { listActive: vi.fn(), upsert: vi.fn() },
+    bank: emptyBankPorts(),
+  };
+}
+
 describe("weekly pay service permissions", () => {
   it("blocks self-approval in the application layer", async () => {
-    const ports: WeeklyPayPorts = {
-      applications: {
-        list: vi.fn(),
-        getById: vi.fn(async () => app({ staffId: "staff-reviewer" })),
-        createOrReplaceDraft: vi.fn(),
-        submit: vi.fn(),
-        returnApplication: vi.fn(),
-        approve: vi.fn(),
-      },
-      policies: { listActive: vi.fn(), upsert: vi.fn() },
-    };
+    const ports = portsWith({
+      getById: vi.fn(async () => app({ staffId: "staff-reviewer" })),
+    });
     await expect(
       approveWeeklyApplication(ports, actor("staff-reviewer", ["weekly_pay.review"]), "app-1"),
     ).rejects.toBeInstanceOf(WeeklyPayDomainError);
@@ -74,33 +96,16 @@ describe("weekly pay service permissions", () => {
 
   it("allows reviewer to approve another staff application", async () => {
     const approve = vi.fn(async () => app({ status: "approved" }));
-    const ports: WeeklyPayPorts = {
-      applications: {
-        list: vi.fn(),
-        getById: vi.fn(async () => app()),
-        createOrReplaceDraft: vi.fn(),
-        submit: vi.fn(),
-        returnApplication: vi.fn(),
-        approve,
-      },
-      policies: { listActive: vi.fn(), upsert: vi.fn() },
-    };
+    const ports = portsWith({
+      getById: vi.fn(async () => app()),
+      approve,
+    });
     await approveWeeklyApplication(ports, actor("staff-reviewer", ["weekly_pay.review"]), "app-1");
     expect(approve).toHaveBeenCalled();
   });
 
   it("blocks worker creating draft for another staff without manage", async () => {
-    const ports: WeeklyPayPorts = {
-      applications: {
-        list: vi.fn(),
-        getById: vi.fn(),
-        createOrReplaceDraft: vi.fn(),
-        submit: vi.fn(),
-        returnApplication: vi.fn(),
-        approve: vi.fn(),
-      },
-      policies: { listActive: vi.fn(), upsert: vi.fn() },
-    };
+    const ports = portsWith({});
     await expect(
       createOrReplaceWeeklyApplicationDraft(
         ports,
@@ -111,17 +116,9 @@ describe("weekly pay service permissions", () => {
   });
 
   it("requires return reason", async () => {
-    const ports: WeeklyPayPorts = {
-      applications: {
-        list: vi.fn(),
-        getById: vi.fn(async () => app()),
-        createOrReplaceDraft: vi.fn(),
-        submit: vi.fn(),
-        returnApplication: vi.fn(),
-        approve: vi.fn(),
-      },
-      policies: { listActive: vi.fn(), upsert: vi.fn() },
-    };
+    const ports = portsWith({
+      getById: vi.fn(async () => app()),
+    });
     await expect(
       returnWeeklyApplication(ports, actor("staff-reviewer", ["weekly_pay.review"]), "app-1", "x"),
     ).rejects.toThrow(/too short/);

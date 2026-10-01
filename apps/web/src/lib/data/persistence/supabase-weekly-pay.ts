@@ -1,7 +1,13 @@
 import "server-only";
 import {
   WeeklyPayDomainError,
+  type ApplicationBankSnapshotMasked,
+  type BankAccountMasked,
+  type BankAccountStatus,
+  type BankAccountType,
   type CreateWeeklyApplicationDraftInput,
+  type UpsertBankAccountInput,
+  type UpsertWorkerSettingsInput,
   type WeeklyApplication,
   type WeeklyApplicationItem,
   type WeeklyApplicationListQuery,
@@ -11,6 +17,7 @@ import {
   type WeeklyPayPolicy,
   type WeeklyPayPolicySnapshot,
   type WeeklyPayPorts,
+  type WorkerSettings,
 } from "@regapro/work";
 
 type RpcError = { message: string; code?: string };
@@ -64,6 +71,15 @@ function throwFromRpc(error: RpcError): never {
   }
   if (/WEEKLY_PAY_ZERO_AMOUNT/i.test(msg)) {
     throw new WeeklyPayDomainError("ZERO_AMOUNT", msg);
+  }
+  if (/WEEKLY_PAY_NO_BANK/i.test(msg)) {
+    throw new WeeklyPayDomainError("NO_BANK", msg);
+  }
+  if (/WEEKLY_PAY_INVALID_BANK/i.test(msg)) {
+    throw new WeeklyPayDomainError("INVALID_BANK", msg);
+  }
+  if (/WEEKLY_PAY_BANK_KEY_MISSING/i.test(msg)) {
+    throw new WeeklyPayDomainError("BANK_KEY_MISSING", msg);
   }
   if (/WEEKLY_PAY_/i.test(msg)) {
     throw new WeeklyPayDomainError("INVALID_SELECTION", msg);
@@ -127,6 +143,74 @@ function mapItem(row: Record<string, unknown>): WeeklyApplicationItem {
     policyVersion: Number(row.policy_version),
     calculationTrace: row.calculation_trace as WeeklyPayItemCalculationTrace,
     createdAt: String(row.created_at),
+  };
+}
+
+const BANK_MASKED_COLUMNS =
+  "id, org_id, staff_id, bank_name, bank_code, branch_name, branch_code, account_type, account_number_last4, account_holder_kana, status, created_by_staff_id, created_at, updated_at, deactivated_at";
+
+const SNAPSHOT_MASKED_COLUMNS =
+  "application_id, org_id, staff_id, source_bank_account_id, bank_name, bank_code, branch_name, branch_code, account_type, account_number_last4, account_holder_kana, created_at";
+
+function mapBankAccount(row: Record<string, unknown>): BankAccountMasked {
+  if ("account_number_ciphertext" in row || "account_number" in row) {
+    throw new WeeklyPayDomainError(
+      "FORBIDDEN",
+      "plaintext or ciphertext bank account fields must not appear in API responses",
+    );
+  }
+  return {
+    id: String(row.id),
+    orgId: String(row.org_id),
+    staffId: String(row.staff_id),
+    bankName: String(row.bank_name),
+    bankCode: String(row.bank_code),
+    branchName: String(row.branch_name),
+    branchCode: String(row.branch_code),
+    accountType: String(row.account_type) as BankAccountType,
+    accountNumberLast4: String(row.account_number_last4),
+    accountHolderKana: String(row.account_holder_kana),
+    status: String(row.status) as BankAccountStatus,
+    createdByStaffId: String(row.created_by_staff_id),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    deactivatedAt: typeof row.deactivated_at === "string" ? row.deactivated_at : null,
+  };
+}
+
+function mapBankSnapshot(row: Record<string, unknown>): ApplicationBankSnapshotMasked {
+  if ("account_number_ciphertext" in row || "account_number" in row) {
+    throw new WeeklyPayDomainError(
+      "FORBIDDEN",
+      "plaintext or ciphertext bank snapshot fields must not appear in API responses",
+    );
+  }
+  return {
+    applicationId: String(row.application_id),
+    orgId: String(row.org_id),
+    staffId: String(row.staff_id),
+    sourceBankAccountId:
+      typeof row.source_bank_account_id === "string" ? row.source_bank_account_id : null,
+    bankName: String(row.bank_name),
+    bankCode: String(row.bank_code),
+    branchName: String(row.branch_name),
+    branchCode: String(row.branch_code),
+    accountType: String(row.account_type) as BankAccountType,
+    accountNumberLast4: String(row.account_number_last4),
+    accountHolderKana: String(row.account_holder_kana),
+    createdAt: String(row.created_at),
+  };
+}
+
+function mapWorkerSettings(row: Record<string, unknown>): WorkerSettings {
+  return {
+    staffId: String(row.staff_id),
+    orgId: String(row.org_id),
+    weeklyPayEnabled: Boolean(row.weekly_pay_enabled),
+    activeBankAccountId:
+      typeof row.active_bank_account_id === "string" ? row.active_bank_account_id : null,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
   };
 }
 
@@ -233,6 +317,16 @@ export function createSupabaseWeeklyPayPorts(client: Client): WeeklyPayPorts {
         if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "weekly application");
         return mapApplication(data);
       },
+      async getBankSnapshot(_orgId, applicationId) {
+        const { data, error } = await client
+          .from("application_bank_snapshots")
+          .select(SNAPSHOT_MASKED_COLUMNS)
+          .eq("application_id", applicationId)
+          .maybeSingle();
+        if (error) throwFromRpc(error);
+        if (!data) return null;
+        return mapBankSnapshot(data);
+      },
     },
     policies: {
       async listActive(orgId) {
@@ -261,6 +355,84 @@ export function createSupabaseWeeklyPayPorts(client: Client): WeeklyPayPorts {
         if (error) throwFromRpc(error);
         if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "weekly pay policy");
         return mapPolicy(data);
+      },
+    },
+    bank: {
+      async listMasked(orgId, staffId) {
+        let q = client
+          .from("bank_accounts")
+          .select(BANK_MASKED_COLUMNS)
+          .eq("org_id", orgId)
+          .order("updated_at", { ascending: false });
+        if (staffId) q = q.eq("staff_id", staffId);
+        const { data, error } = await q;
+        if (error) throwFromRpc(error);
+        return (data ?? []).map(mapBankAccount);
+      },
+      async upsert(_orgId, input: UpsertBankAccountInput) {
+        const { data, error } = await client.rpc("upsert_bank_account", {
+          p_bank_name: input.bankName,
+          p_bank_code: input.bankCode,
+          p_branch_name: input.branchName,
+          p_branch_code: input.branchCode,
+          p_account_type: input.accountType,
+          p_account_number: input.accountNumber,
+          p_account_holder_kana: input.accountHolderKana,
+          p_for_staff_id: input.staffId ?? null,
+        });
+        if (error) throwFromRpc(error);
+        if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "bank account");
+        // RPC returns full row including ciphertext to the SECURITY DEFINER caller
+        // via PostgREST; strip sensitive keys before mapping.
+        const safe = { ...data };
+        delete safe.account_number_ciphertext;
+        delete safe.account_number;
+        return mapBankAccount(safe);
+      },
+      async deactivate(_orgId, bankAccountId) {
+        const { data, error } = await client.rpc("deactivate_bank_account", {
+          p_bank_account_id: bankAccountId,
+        });
+        if (error) throwFromRpc(error);
+        if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "bank account");
+        const safe = { ...data };
+        delete safe.account_number_ciphertext;
+        delete safe.account_number;
+        return mapBankAccount(safe);
+      },
+      async getWorkerSettings(orgId, staffId) {
+        const { data, error } = await client
+          .from("worker_settings")
+          .select(
+            "staff_id, org_id, weekly_pay_enabled, active_bank_account_id, created_at, updated_at",
+          )
+          .eq("org_id", orgId)
+          .eq("staff_id", staffId)
+          .maybeSingle();
+        if (error) throwFromRpc(error);
+        if (!data) return null;
+        return mapWorkerSettings(data);
+      },
+      async upsertWorkerSettings(_orgId, input: UpsertWorkerSettingsInput) {
+        const { data, error } = await client.rpc("upsert_worker_settings", {
+          p_weekly_pay_enabled: input.weeklyPayEnabled,
+          p_active_bank_account_id: input.activeBankAccountId ?? null,
+          p_for_staff_id: input.staffId ?? null,
+        });
+        if (error) throwFromRpc(error);
+        if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "worker settings");
+        return mapWorkerSettings(data);
+      },
+      async decryptApplicationAccountNumber(_orgId, applicationId) {
+        const { data, error } = await client.rpc(
+          "decrypt_application_bank_account_number",
+          { p_application_id: applicationId },
+        );
+        if (error) throwFromRpc(error);
+        if (typeof data !== "string" || !/^\d{7,8}$/.test(data)) {
+          throw new WeeklyPayDomainError("NOT_FOUND", "bank account number");
+        }
+        return data;
       },
     },
   };

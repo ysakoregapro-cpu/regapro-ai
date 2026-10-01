@@ -2,7 +2,8 @@
  * Weekly Pay Application / Policy Snapshot types (Phase 4).
  *
  * Inputs: confirmed Work Records + employment wage snapshots + policy.
- * Shift is never payroll SoT. Bank / paid status are later phases.
+ * Shift is never payroll SoT. Paid / transfer CSV are later phases.
+ * Phase 5: bank accounts + application bank snapshots (masked in APIs).
  */
 
 import type { IsoDate, IsoTime } from "./types.js";
@@ -145,4 +146,70 @@ export type WeeklyApplicationListQuery = {
   toWeekStart?: IsoDate;
   staffId?: string;
   status?: WeeklyApplicationStatus;
+};
+
+export const BANK_ACCOUNT_TYPES = ["ordinary", "current"] as const;
+export type BankAccountType = (typeof BANK_ACCOUNT_TYPES)[number];
+
+export const BANK_ACCOUNT_STATUSES = ["active", "inactive"] as const;
+export type BankAccountStatus = (typeof BANK_ACCOUNT_STATUSES)[number];
+
+/** Masked bank account view — never includes plaintext account number. */
+export type BankAccountMasked = {
+  id: string;
+  orgId: string;
+  staffId: string;
+  bankName: string;
+  bankCode: string;
+  branchName: string;
+  branchCode: string;
+  accountType: BankAccountType;
+  accountNumberLast4: string;
+  accountHolderKana: string;
+  status: BankAccountStatus;
+  createdByStaffId: string;
+  createdAt: string;
+  updatedAt: string;
+  deactivatedAt: string | null;
+};
+
+export type ApplicationBankSnapshotMasked = {
+  applicationId: string;
+  orgId: string;
+  staffId: string;
+  sourceBankAccountId: string | null;
+  bankName: string;
+  bankCode: string;
+  branchName: string;
+  branchCode: string;
+  accountType: BankAccountType;
+  accountNumberLast4: string;
+  accountHolderKana: string;
+  createdAt: string;
+};
+
+export type WorkerSettings = {
+  staffId: string;
+  orgId: string;
+  weeklyPayEnabled: boolean;
+  activeBankAccountId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UpsertBankAccountInput = {
+  bankName: string;
+  bankCode: string;
+  branchName: string;
+  branchCode: string;
+  accountType: BankAccountType;
+  accountNumber: string;
+  accountHolderKana: string;
+  staffId?: string;
+};
+
+export type UpsertWorkerSettingsInput = {
+  weeklyPayEnabled: boolean;
+  activeBankAccountId?: string | null;
+  staffId?: string;
 };

@@ -75,7 +75,10 @@ export function classifyThrown(err: unknown): AppErrorCode {
       case "ALREADY_APPLIED":
       case "INVALID_TRANSITION":
       case "WEEK_CUTOFF":
+      case "NO_BANK":
         return "CONFLICT";
+      case "BANK_KEY_MISSING":
+        return "INTERNAL";
       default:
         return "VALIDATION";
     }

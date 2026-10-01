@@ -3,10 +3,15 @@ import { WeeklyPayDomainError } from "./weekly-pay-errors.js";
 import { assertNotSelfReview, assertReturnReason } from "./weekly-pay-lifecycle.js";
 import type { WeeklyPayPorts } from "./weekly-pay-ports.js";
 import type {
+  ApplicationBankSnapshotMasked,
+  BankAccountMasked,
   CreateWeeklyApplicationDraftInput,
+  UpsertBankAccountInput,
+  UpsertWorkerSettingsInput,
   WeeklyApplication,
   WeeklyApplicationListQuery,
   WeeklyPayPolicy,
+  WorkerSettings,
 } from "./weekly-pay-types.js";
 
 export type WeeklyPayActor = {
@@ -48,6 +53,14 @@ export function canViewWeeklyPay(actor: WeeklyPayActor): boolean {
     has(actor, "weekly_pay.pay") ||
     canManageWeeklyPayPolicy(actor)
   );
+}
+
+export function canPayWeeklyPay(actor: WeeklyPayActor): boolean {
+  return has(actor, "weekly_pay.pay") || has(actor, "weekly_pay.manage");
+}
+
+export function canDecryptBankAccount(actor: WeeklyPayActor): boolean {
+  return canPayWeeklyPay(actor);
 }
 
 export async function listWeeklyApplications(
@@ -202,4 +215,116 @@ export async function upsertWeeklyPayPolicy(
     throw new WeeklyPayDomainError("INVALID_SELECTION", "rounding_unit_yen must be > 0");
   }
   return ports.policies.upsert(actor.orgId, input);
+}
+
+export async function listBankAccountsMasked(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  staffId?: string,
+): Promise<BankAccountMasked[]> {
+  requireStaff(actor);
+  if (!canViewWeeklyPay(actor)) {
+    throw new WeeklyPayDomainError("FORBIDDEN", "weekly_pay view permission required");
+  }
+  const target =
+    staffId &&
+    (canReviewWeeklyPay(actor) || canManageWeeklyPay(actor) || has(actor, "weekly_pay.pay"))
+      ? staffId
+      : actor.staffId;
+  if (staffId && staffId !== actor.staffId && target !== staffId) {
+    throw new WeeklyPayDomainError("FORBIDDEN", "cannot list another staff bank accounts");
+  }
+  return ports.bank.listMasked(actor.orgId, target);
+}
+
+export async function upsertBankAccount(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  input: UpsertBankAccountInput,
+): Promise<BankAccountMasked> {
+  requireStaff(actor);
+  if (!canSubmitWeeklyPay(actor)) {
+    throw new WeeklyPayDomainError("FORBIDDEN", "weekly_pay.submit required");
+  }
+  const target = input.staffId ?? actor.staffId;
+  if (target !== actor.staffId && !canManageWeeklyPay(actor)) {
+    throw new WeeklyPayDomainError("FORBIDDEN", "cannot manage another staff bank account");
+  }
+  return ports.bank.upsert(actor.orgId, { ...input, staffId: target });
+}
+
+export async function deactivateBankAccount(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  bankAccountId: string,
+): Promise<BankAccountMasked> {
+  requireStaff(actor);
+  if (!canSubmitWeeklyPay(actor)) {
+    throw new WeeklyPayDomainError("FORBIDDEN", "weekly_pay.submit required");
+  }
+  return ports.bank.deactivate(actor.orgId, bankAccountId);
+}
+
+export async function getWorkerSettings(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  staffId?: string,
+): Promise<WorkerSettings | null> {
+  requireStaff(actor);
+  if (!canViewWeeklyPay(actor)) {
+    throw new WeeklyPayDomainError("FORBIDDEN", "weekly_pay view permission required");
+  }
+  const target = staffId ?? actor.staffId;
+  if (
+    target !== actor.staffId &&
+    !canReviewWeeklyPay(actor) &&
+    !canManageWeeklyPay(actor) &&
+    !has(actor, "weekly_pay.pay")
+  ) {
+    throw new WeeklyPayDomainError("FORBIDDEN", "cannot read another staff settings");
+  }
+  return ports.bank.getWorkerSettings(actor.orgId, target);
+}
+
+export async function upsertWorkerSettings(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  input: UpsertWorkerSettingsInput,
+): Promise<WorkerSettings> {
+  requireStaff(actor);
+  if (!canSubmitWeeklyPay(actor)) {
+    throw new WeeklyPayDomainError("FORBIDDEN", "weekly_pay.submit required");
+  }
+  const target = input.staffId ?? actor.staffId;
+  if (target !== actor.staffId && !canManageWeeklyPay(actor)) {
+    throw new WeeklyPayDomainError("FORBIDDEN", "cannot manage another staff settings");
+  }
+  return ports.bank.upsertWorkerSettings(actor.orgId, { ...input, staffId: target });
+}
+
+export async function getApplicationBankSnapshot(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  applicationId: string,
+): Promise<ApplicationBankSnapshotMasked> {
+  const app = await getWeeklyApplication(ports, actor, applicationId);
+  const snap = await ports.applications.getBankSnapshot(actor.orgId, app.id);
+  if (!snap) {
+    throw new WeeklyPayDomainError("NOT_FOUND", "bank snapshot");
+  }
+  return snap;
+}
+
+export async function decryptApplicationBankAccountNumber(
+  ports: WeeklyPayPorts,
+  actor: WeeklyPayActor,
+  applicationId: string,
+): Promise<string> {
+  requireStaff(actor);
+  if (!canDecryptBankAccount(actor)) {
+    throw new WeeklyPayDomainError("FORBIDDEN", "weekly_pay.pay required to decrypt");
+  }
+  // Ensure the application is visible in-org before decrypt.
+  await getWeeklyApplication(ports, actor, applicationId);
+  return ports.bank.decryptApplicationAccountNumber(actor.orgId, applicationId);
 }

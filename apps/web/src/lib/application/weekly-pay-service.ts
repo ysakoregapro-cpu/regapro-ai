@@ -5,13 +5,21 @@ import {
   WeeklyPayDomainError,
   approveWeeklyApplication as approveWeeklyApplicationUseCase,
   createOrReplaceWeeklyApplicationDraft as createOrReplaceWeeklyApplicationDraftUseCase,
+  deactivateBankAccount as deactivateBankAccountUseCase,
+  getApplicationBankSnapshot as getApplicationBankSnapshotUseCase,
   getWeeklyApplication as getWeeklyApplicationUseCase,
+  getWorkerSettings as getWorkerSettingsUseCase,
+  listBankAccountsMasked as listBankAccountsMaskedUseCase,
   listWeeklyApplications as listWeeklyApplicationsUseCase,
   listWeeklyPayPolicies as listWeeklyPayPoliciesUseCase,
   returnWeeklyApplication as returnWeeklyApplicationUseCase,
   submitWeeklyApplication as submitWeeklyApplicationUseCase,
+  upsertBankAccount as upsertBankAccountUseCase,
   upsertWeeklyPayPolicy as upsertWeeklyPayPolicyUseCase,
+  upsertWorkerSettings as upsertWorkerSettingsUseCase,
   type CreateWeeklyApplicationDraftInput,
+  type UpsertBankAccountInput,
+  type UpsertWorkerSettingsInput,
   type WeeklyApplicationListQuery,
   type WeeklyPayActor,
 } from "@regapro/work";
@@ -108,4 +116,40 @@ export async function upsertWeeklyPayPolicyForAccess(
   input: Parameters<typeof upsertWeeklyPayPolicyUseCase>[2],
 ) {
   return upsertWeeklyPayPolicyUseCase(await ports(), actorFromAccess(access), input);
+}
+
+export async function listBankAccountsForAccess(access: AccessContext, staffId?: string) {
+  return listBankAccountsMaskedUseCase(await ports(), actorFromAccess(access), staffId);
+}
+
+export async function upsertBankAccountForAccess(
+  access: AccessContext,
+  input: UpsertBankAccountInput,
+) {
+  return upsertBankAccountUseCase(await ports(), actorFromAccess(access), input);
+}
+
+export async function deactivateBankAccountForAccess(
+  access: AccessContext,
+  bankAccountId: string,
+) {
+  return deactivateBankAccountUseCase(await ports(), actorFromAccess(access), bankAccountId);
+}
+
+export async function getWorkerSettingsForAccess(access: AccessContext, staffId?: string) {
+  return getWorkerSettingsUseCase(await ports(), actorFromAccess(access), staffId);
+}
+
+export async function upsertWorkerSettingsForAccess(
+  access: AccessContext,
+  input: UpsertWorkerSettingsInput,
+) {
+  return upsertWorkerSettingsUseCase(await ports(), actorFromAccess(access), input);
+}
+
+export async function getApplicationBankSnapshotForAccess(
+  access: AccessContext,
+  applicationId: string,
+) {
+  return getApplicationBankSnapshotUseCase(await ports(), actorFromAccess(access), applicationId);
 }
