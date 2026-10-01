@@ -18,3 +18,5 @@ Thumbs.db
 
 supabase/.temp/
 .local/
+
+tmp/
