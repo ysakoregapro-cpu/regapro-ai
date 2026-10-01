@@ -1,12 +1,15 @@
 /**
  * Phase 8.1 legacy expense / sales import.
  * Never writes to legacy projects. No display-name matching.
- * Email matches are candidates only (never auto-publish personal history).
+ * Email matches are candidates only. Personal publish requires
+ * rows in migration_approved_identities (human-approved). Never use
+ * --confirm-email-matches (removed).
  *
  * Usage:
  *   node scripts/legacy-expense-sales-import.mjs --entity expense --org-id <uuid> --dry-run
  *   node scripts/legacy-expense-sales-import.mjs --entity sales --org-id <uuid> --dry-run --source-dir tmp/legacy-import/sales
  *   node scripts/legacy-expense-sales-import.mjs --entity expense --org-id <uuid> --apply --source-dir tmp/legacy-import/expense
+ *   node scripts/legacy-expense-sales-import.mjs --entity sales --org-id <uuid> --apply --batch-purpose verification
  *
  * Legacy RO env (optional if --source-dir provided):
  *   LEGACY_EXPENSE_URL / LEGACY_EXPENSE_SERVICE_ROLE_KEY
@@ -17,10 +20,15 @@ import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { loadEnvFiles, requireEnv } from "./rls-integration/lib.mjs";
+import {
+  assertNoEmailConfirmLoophole,
+  resolveLegacyPerson,
+} from "./lib/legacy-identity-resolve.mjs";
 
 loadEnvFiles();
 
 const args = process.argv.slice(2);
+assertNoEmailConfirmLoophole(args);
 const argVal = (flag) => {
   const i = args.indexOf(flag);
   return i >= 0 ? args[i + 1] : null;
@@ -29,7 +37,7 @@ const entity = argVal("--entity");
 const orgId = argVal("--org-id");
 const dryRun = !args.includes("--apply");
 const sourceDir = argVal("--source-dir");
-const confirmEmailMatches = args.includes("--confirm-email-matches");
+const batchPurposeArg = argVal("--batch-purpose");
 const failAfterRaw = argVal("--fail-after");
 const failAfter =
   failAfterRaw == null || failAfterRaw === ""
@@ -39,6 +47,15 @@ if (failAfterRaw != null && (!Number.isFinite(failAfter) || failAfter < 0)) {
   console.error("--fail-after must be a non-negative integer");
   process.exit(2);
 }
+if (
+  batchPurposeArg != null &&
+  !["import", "verification", "fail_inject"].includes(batchPurposeArg)
+) {
+  console.error("--batch-purpose must be import|verification|fail_inject");
+  process.exit(2);
+}
+const resolvedBatchPurpose =
+  batchPurposeArg ?? (failAfter != null ? "fail_inject" : "import");
 
 function fail(code, report) {
   console.log(JSON.stringify(report, null, 2));
@@ -114,7 +131,14 @@ const report = {
   status: "OK",
   entity,
   dryRun,
+  batchPurpose: resolvedBatchPurpose,
   orgIdPrefix: orgId ? prefix(orgId) : null,
+  policy: {
+    confirmEmailMatchesRemoved: true,
+    personalPublishRequires: "migration_approved_identities",
+    fixtureStaffBindingForbidden: true,
+    autoInviteForbidden: true,
+  },
   legacyCounts: {},
   enrichment: { loaded: false, blockedReasons: [] },
   identity: {
@@ -191,11 +215,27 @@ if (orgErr || !orgRow) {
 
 const sourceSystem = entity === "expense" ? "legacy_expense" : "legacy_sales";
 
-const { data: staffRows, error: staffErr } = await newDb
-  .from("staff")
-  .select("staff_id, staff_no, status, org_id")
-  .eq("org_id", orgId);
-if (staffErr) throw staffErr;
+let staffRows;
+{
+  const primary = await newDb
+    .from("staff")
+    .select("staff_id, staff_no, status, org_id, record_kind, affiliation_kind, name")
+    .eq("org_id", orgId);
+  if (!primary.error) {
+    staffRows = primary.data ?? [];
+  } else {
+    const fallback = await newDb
+      .from("staff")
+      .select("staff_id, staff_no, status, org_id, name")
+      .eq("org_id", orgId);
+    if (fallback.error) throw fallback.error;
+    staffRows = (fallback.data ?? []).map((s) => ({
+      ...s,
+      record_kind: /^RLSFIX/i.test(s.staff_no ?? "") ? "fixture" : "operational",
+      affiliation_kind: /^RLSFIX/i.test(s.staff_no ?? "") ? "test" : "unknown",
+    }));
+  }
+}
 
 const { data: identityRows, error: idErr } = await newDb
   .from("staff_identities")
@@ -251,115 +291,47 @@ if (existsSync(newEmailPath)) {
 
 report.staffCatalog = {
   orgStaffN: (staffRows ?? []).length,
+  operationalN: (staffRows ?? []).filter((s) => s.record_kind !== "fixture").length,
+  fixtureN: (staffRows ?? []).filter((s) => s.record_kind === "fixture").length,
   identitiesInOrg: (identityRows ?? []).filter((i) => staffById.has(i.staff_id)).length,
   appAuthInOrg: (identityRows ?? []).filter(
     (i) => staffById.has(i.staff_id) && i.identity_type === "app_auth" && i.auth_user_id,
   ).length,
 };
 
-const { data: confirmedMatches } = await newDb
-  .from("migration_identity_matches")
-  .select("external_user_id, staff_id, status, match_method, source_system")
-  .eq("source_system", sourceSystem)
-  .eq("status", "confirmed");
-const confirmedByExternal = new Map();
-for (const m of confirmedMatches ?? []) {
-  if (m.staff_id && staffById.has(m.staff_id)) {
-    confirmedByExternal.set(String(m.external_user_id), m.staff_id);
-  }
+// ONLY human-approved map can confirm personal publish. Email flag loophole removed.
+const { data: approvedIdentities, error: approvedErr } = await newDb
+  .from("migration_approved_identities")
+  .select("external_user_id, staff_id, affiliation_kind, source_system")
+  .eq("org_id", orgId)
+  .eq("source_system", sourceSystem);
+if (approvedErr && !/relation|does not exist|schema cache/i.test(approvedErr.message ?? "")) {
+  throw approvedErr;
 }
+const approvedByExternal = new Map();
+for (const m of approvedIdentities ?? []) {
+  const staff = staffById.get(m.staff_id);
+  if (!m.staff_id || !staff || staff.record_kind === "fixture") continue;
+  approvedByExternal.set(String(m.external_user_id), m.staff_id);
+}
+report.approvedIdentityN = approvedByExternal.size;
 
 /**
- * Resolve person.
- * confirmed: auth_user_id unique in-org OR staff_no OR existing_identity(source) OR confirmed match row
- * candidate: verified email md5 unique in-org (not enough alone to import)
+ * Resolve person — confirmed only via migration_approved_identities.
  */
 function resolvePerson(row, legacyEmailByUserId) {
-  const candidates = new Map(); // staffId -> methods[]
-  const add = (staffId, method) => {
-    if (!staffId || !staffById.has(staffId)) return;
-    const methods = candidates.get(staffId) ?? [];
-    methods.push(method);
-    candidates.set(staffId, methods);
-  };
-
-  const externalId = String(row.id ?? row.profile_id ?? row.member_id ?? "");
-  if (confirmedByExternal.has(externalId)) {
-    add(confirmedByExternal.get(externalId), "manual_confirmed");
-  }
-
-  const authUserId = row.auth_user_id ?? row.authUserId ?? null;
-  if (authUserId && byAuth.has(authUserId)) {
-    for (const sid of byAuth.get(authUserId)) add(sid, "auth_user_id");
-  }
-
-  const loginId = row.login_id ?? null;
-  if (loginId && byStaffNo.has(normalizeCode(loginId))) {
-    add(byStaffNo.get(normalizeCode(loginId)), "staff_no");
-  }
-
-  if (externalId && byLegacyExternal.has(externalId)) {
-    add(byLegacyExternal.get(externalId), "existing_identity");
-  }
-
-  // Email candidate (never alone for confirmed). 3-PJ common hash needs org/person proof.
-  const emailKey = authUserId ?? externalId;
-  const emailRow = legacyEmailByUserId.get(String(emailKey));
-  let emailCandidateStaff = null;
-  let emailCrossProject = false;
-  if (emailRow?.confirmed && emailRow.email_md5 && byEmailMd5.has(emailRow.email_md5)) {
-    emailCrossProject = CROSS_PROJECT_EMAIL_MD5.has(emailRow.email_md5);
-    const hits = byEmailMd5.get(emailRow.email_md5);
-    if (hits.length === 1) {
-      emailCandidateStaff = hits[0];
-      // Never auto-confirm from email alone — not even with --confirm-email-matches for 3-PJ common.
-      if (confirmEmailMatches && !emailCrossProject) {
-        add(hits[0], "email_verified_candidate");
-      }
-    } else if (hits.length > 1) {
-      return {
-        kind: "collision",
-        staffId: null,
-        methods: ["email_verified_candidate"],
-        staffIds: hits,
-      };
-    }
-  }
-
-  const strong = [...candidates.entries()].filter(([, methods]) =>
-    methods.some((m) => m !== "email_verified_candidate"),
-  );
-
-  if (strong.length === 1) {
-    const [staffId, methods] = strong[0];
-    const staff = staffById.get(staffId);
-    return {
-      kind: staff?.status === "active" ? "confirmed" : "left",
-      staffId,
-      methods: [...new Set(methods)],
-    };
-  }
-  if (strong.length > 1) {
-    return {
-      kind: "collision",
-      staffId: null,
-      methods: [...new Set(strong.flatMap(([, m]) => m))],
-      staffIds: strong.map(([id]) => id),
-    };
-  }
-
-  // Only email candidate remains
-  if (emailCandidateStaff) {
-    return {
-      kind: emailCrossProject ? "candidate_needs_org_person_confirm" : "candidate",
-      staffId: emailCandidateStaff,
-      methods: emailCrossProject
-        ? ["email_verified_candidate", "cross_project_email_unconfirmed"]
-        : ["email_verified_candidate"],
-    };
-  }
-
-  return { kind: "unmatched", staffId: null, methods: [] };
+  return resolveLegacyPerson({
+    row,
+    legacyEmailByUserId,
+    approvedByExternal,
+    staffById,
+    byAuth,
+    byStaffNo,
+    byLegacyExternal,
+    byEmailMd5,
+    crossProjectEmailMd5: CROSS_PROJECT_EMAIL_MD5,
+    normalizeCode,
+  });
 }
 
 function countIdentity(person, externalPrefix) {
@@ -623,15 +595,37 @@ async function ensureBatch() {
       org_id: orgId,
       source_system: sourceSystem,
       entity_kind: entity,
-      label: `phase81 ${entity} ${new Date().toISOString()}`,
+      label: `phase81 ${entity} ${resolvedBatchPurpose} ${new Date().toISOString()}`,
       dry_run: false,
+      batch_purpose: resolvedBatchPurpose,
       status: "ready",
       created_by_staff_id: null,
-      notes: "system migration batch; created_by intentionally null",
+      notes: `system migration batch; purpose=${resolvedBatchPurpose}; created_by intentionally null`,
     })
     .select("id")
     .single();
-  if (error) throw error;
+  if (error) {
+    // Pre-migration fallback without batch_purpose
+    if (/batch_purpose|schema cache/i.test(error.message ?? "")) {
+      const retry = await newDb
+        .from("migration_import_batches")
+        .insert({
+          org_id: orgId,
+          source_system: sourceSystem,
+          entity_kind: entity,
+          label: `phase81 ${entity} ${resolvedBatchPurpose} ${new Date().toISOString()}`,
+          dry_run: false,
+          status: "ready",
+          created_by_staff_id: null,
+          notes: `system migration batch; purpose=${resolvedBatchPurpose}; created_by intentionally null`,
+        })
+        .select("id")
+        .single();
+      if (retry.error) throw retry.error;
+      return retry.data.id;
+    }
+    throw error;
+  }
   return data.id;
 }
 
@@ -679,13 +673,13 @@ async function recordIdentityProposal(externalUserId, person) {
   const method =
     person.methods?.[0] === "email_verified_candidate"
       ? "email_verified_candidate"
-      : person.methods?.[0] === "auth_user_id"
+      : person.methods?.[0] === "auth_user_id_candidate"
         ? "auth_user_id"
-        : person.methods?.[0] === "staff_no"
+        : person.methods?.[0] === "staff_no_candidate"
           ? "staff_no"
-          : person.methods?.[0] === "existing_identity"
+          : person.methods?.[0] === "existing_identity_candidate"
             ? "existing_identity"
-            : person.methods?.[0] === "manual_confirmed"
+            : person.methods?.[0] === "approved_identity"
               ? "manual"
               : "manual";
   const status =
@@ -694,6 +688,7 @@ async function recordIdentityProposal(externalUserId, person) {
       : person.kind === "collision"
         ? "rejected"
         : "proposed";
+  // Proposals never elevate email to confirmed; confirmed only mirrors approved table.
   report.writes.attempted += 1;
   const { error } = await newDb.from("migration_identity_matches").upsert(
     {
@@ -734,6 +729,18 @@ if (!dryRun) {
 
 if (entity === "expense") {
   const { profiles, categories, applications, versions, events } = legacyData;
+  const profileNameById = new Map();
+  const restrictedProfileNamesPath = join(
+    "tmp/legacy-import/_restricted/profile_display_names.json",
+  );
+  if (existsSync(restrictedProfileNamesPath)) {
+    for (const p of readJson(restrictedProfileNamesPath)) {
+      if (p.id && p.display_name) profileNameById.set(String(p.id), p.display_name);
+    }
+  }
+  for (const p of profiles) {
+    if (p.display_name) profileNameById.set(String(p.id), p.display_name);
+  }
   report.legacyCounts = {
     profiles: profiles.length,
     categories: categories.length,
@@ -742,6 +749,7 @@ if (entity === "expense") {
     events: events.length,
     softDeleted: applications.filter((a) => a.deleted_at).length,
     withReceiptPath: applications.filter((a) => a.receipt_path).length,
+    reviewerDistinct: new Set(applications.map((a) => a.reviewed_by).filter(Boolean)).size,
   };
   report.import.sourceN = applications.length;
   report.reconciliation.sourceN = applications.length;
@@ -973,6 +981,8 @@ if (entity === "expense") {
     const reviewer = app.reviewed_by
       ? resolvePerson({ id: app.reviewed_by, auth_user_id: app.reviewed_by }, legacyEmailByUserId)
       : null;
+    const reviewerNameSnapshot =
+      profileNameById.get(String(app.reviewed_by ?? "")) ?? null;
 
     report.import.plannedImport += 1;
     report.amounts.plannedYenTotal += amountCheck.value;
@@ -981,6 +991,8 @@ if (entity === "expense") {
         externalPrefix: prefix(externalId),
         staffPrefix: prefix(person.staffId),
         status: app.status,
+        reviewerMapped: reviewer?.kind === "confirmed",
+        reviewerSnapshotKept: Boolean(reviewerNameSnapshot || app.reviewed_by),
       });
     }
 
@@ -995,6 +1007,7 @@ if (entity === "expense") {
       categoryId,
       reviewerStaffId:
         reviewer?.kind === "confirmed" ? reviewer.staffId : null,
+      reviewerNameSnapshot,
       application: app,
       versions: appVersions.map((v) => ({
         ...v,
@@ -1007,11 +1020,13 @@ if (entity === "expense") {
         return {
           ...e,
           actorStaffId: actor?.kind === "confirmed" ? actor.staffId : null,
+          actorNameSnapshot: profileNameById.get(String(e.actor_id ?? "")) ?? null,
           metadata: {
             from_status: e.from_status,
             to_status: e.to_status,
             note: e.note,
             actor_unresolved: !(actor?.kind === "confirmed"),
+            actor_legacy_id: e.actor_id ?? null,
           },
         };
       }),
@@ -1184,6 +1199,22 @@ if (entity === "expense") {
       blockingReason = blockingReason ?? "partial_allocation_identity";
     }
 
+    if (blockingReason === "no_allocations") {
+      report.salesHolds = report.salesHolds ?? {
+        noAllocations: 0,
+        noAllocationsInactive: 0,
+        noAllocationsActiveUnexpected: 0,
+        personalPublishBlocked: true,
+      };
+      report.salesHolds.noAllocations += 1;
+      if (!sr.is_active || sr.deleted_at) report.salesHolds.noAllocationsInactive += 1;
+      else report.salesHolds.noAllocationsActiveUnexpected += 1;
+      quarantinePayload.migration_hold_reason = "no_allocations";
+      quarantinePayload.admin_trackable = true;
+      quarantinePayload.personal_publish = false;
+      quarantinePayload.is_active = sr.is_active;
+      quarantinePayload.deleted_at = sr.deleted_at ?? null;
+    }
     if (blockingReason) {
       report.import.quarantined += 1;
       report.reconciliation.accountedN += 1;

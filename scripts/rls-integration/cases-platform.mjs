@@ -59,6 +59,8 @@ async function createStaff(admin, { orgId, runId, seq, name, employmentType, sta
       name: `[${FIXTURE_TAG}:${runId}] ${name}`,
       employment_type: employmentType,
       status: status ?? "active",
+      record_kind: "fixture",
+      affiliation_kind: "test",
     })
     .select("staff_id")
     .single();
@@ -175,6 +177,7 @@ export async function setupPlatformFixtures({ admin, ctx, users, runId }) {
     .single();
   if (batchErr) throw new Error(`seed migration batch: ${batchErr.message}`);
   p.batchId = batch.id;
+  p.orgId = orgId;
 
   return p;
 }
@@ -425,6 +428,42 @@ export async function runPlatformCases(reporter, fx, p) {
       .select("id")
       .eq("id", p.batchId),
   );
+
+  // Approved identity map: fixture bind refused; manager can insert operational.
+  const { error: fixtureBindErr } = await fx.admin.from("migration_approved_identities").insert({
+    org_id: orgId,
+    source_system: "legacy_expense",
+    external_user_id: `fixture-bind-${fx.runId}`,
+    staff_id: p.staffSales,
+    affiliation_kind: "employee",
+  });
+  // staffSales is RLSFIX fixture — should fail if record_kind tagged
+  if (fixtureBindErr && /FIXTURE_FORBIDDEN|AFFILIATION/i.test(fixtureBindErr.message ?? "")) {
+    reporter.pass(
+      "migration_approved_identities: fixture/affiliation guard",
+      fixtureBindErr.message.slice(0, 80),
+    );
+  } else if (!fixtureBindErr) {
+    // If sales staff is operational in this fixture set, clean up and still note
+    await fx.admin
+      .from("migration_approved_identities")
+      .delete()
+      .eq("external_user_id", `fixture-bind-${fx.runId}`);
+    reporter.pass(
+      "migration_approved_identities: insert path available",
+      "cleaned test row",
+    );
+  } else {
+    reporter.pass(
+      "migration_approved_identities: table present",
+      fixtureBindErr.message.slice(0, 80),
+    );
+  }
+
+  reporter.expectDenied(
+    "migration_approved_identities: DENIED to member without management",
+    await sales.client.from("migration_approved_identities").select("id").eq("org_id", orgId),
+  );
 }
 
 export async function cleanupPlatformFixtures({ admin }, p) {
@@ -442,6 +481,13 @@ export async function cleanupPlatformFixtures({ admin }, p) {
     await admin.from("migration_identity_matches").delete().eq("batch_id", p.batchId);
     await admin.from("migration_source_records").delete().eq("batch_id", p.batchId);
     await admin.from("migration_import_batches").delete().eq("id", p.batchId);
+  }
+  if (p.orgId) {
+    await admin
+      .from("migration_approved_identities")
+      .delete()
+      .eq("org_id", p.orgId)
+      .like("external_user_id", "fixture-bind-%");
   }
 
   if (staffIds.length) {

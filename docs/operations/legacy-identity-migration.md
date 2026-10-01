@@ -1,123 +1,80 @@
 # Legacy Identity Migration / 旧システム同一性の移行
 
-旧・経費 / 売上 / 週払いシステムのデータを `staff_id` へ安全に対応付けるための運用手順。
+旧・経費 / 売上の人物を `staff_id` へ安全に対応付け、承認後にのみ個人履歴を公開する手順。
 
-**現時点で本番データの移行は実施していない。** ここに書かれているのは、実施するときの手順と、そのために用意済みの仕組み。
+## 原則 / Principles
 
-## 前提 / Premise
+1. **承認済み対応表だけが移行根拠** — `migration_approved_identities`
+2. メール一致・Auth ID 一致・社員番号一致は **候補（proposed）のみ**。個人公開しない
+3. `--confirm-email-matches` は **廃止**（指定すると importer が即拒否）
+4. fixture staff（`record_kind=fixture` / `RLSFIX*`）へは **絶対に結ばない**
+5. 未確認人物へログイン招待・業務ロールを付けない
+6. 旧経費と旧売上の同名は **別人の可能性**を残す（別 source_system の行として承認）
+7. 旧 PJ は SELECT のみ
 
-旧システムのユーザー ID は現行 Supabase の `auth.users.id` と**一致しない**。同一とみなす前提でスクリプトを書いてはならない。
+## テーブル
 
-対応付けは必ず `staff_identities` を経由する:
-
-```
-legacy_expense.user_id      ─┐
-legacy_sales.user_id        ─┼→ staff_identities → staff.staff_id
-legacy_weekly_pay.user_id   ─┘
-```
-
-`UNIQUE (source_system, external_user_id)` により、同じ外部 ID が二人に割り当たることはない。
-
-## 用意済みのテーブル / Scaffolding
-
-`supabase/migrations/20260828122000_legacy_migration_foundation.sql`
-
-| テーブル | 役割 |
+| オブジェクト | 役割 |
 |---|---|
-| `migration_import_batches` | 取り込み単位。`dry_run` 既定 true、`status` で進行を管理 |
-| `migration_source_records` | 旧システムの生データ。`content_hash` で再取り込みを検出 |
-| `migration_identity_matches` | 「この外部 ID はこの staff」の**提案**。確定するまで紐づけない |
-| `migration_errors` | 失敗の記録。バッチ単位で再実行できるように |
+| `staff.record_kind` | `operational` / `fixture` / `legacy_pending` |
+| `staff.affiliation_kind` | `employee` / `left` / `external` / `test` / `unknown` |
+| `migration_approved_identities` | 人が承認した external_user_id → staff_id |
+| `migration_identity_matches` | バッチごとの提案ログ（確定根拠にしない） |
+| `migration_import_batches.batch_purpose` | `import` / `verification` / `fail_inject` |
+| `migration_source_record_current` | 出典 ID 単位の最新状態（822 行 ≠ 13/191 一意） |
+| `expense_applications.reviewed_by_*` | 審査者未対応でも履歴 snapshot |
+| `personal_sales_cases.migration_hold_reason` | 例: `no_allocations`（個人公開しない） |
 
-すべて `regapro_can_manage_staff` を持つ管理者のみアクセス可能。旧システムの個人情報を含むため。
+## 人物確認フロー（ログインなし）
 
-過剰と判断すれば使わなくてもよいが、バッチ単位のロールバックと突合レビューは実運用でほぼ必ず必要になる。
+1. `node scripts/_phase81-person-review-table.mjs --org-id <org>`  
+   → `tmp/legacy-import/_restricted/person_mapping_review.json`（gitignore）
+2. レビュー表で各 personKey について確認:
+   - 経費 profile と売上 member が同一人物か
+   - 所属区分（在籍 / 退職 / 外部 / テスト）
+   - 紐づける operational staff（無ければ `legacy_pending` shell を作成。fixture 禁止）
+3. 承認後のみ INSERT:
 
-## 手順 / Procedure
+```sql
+INSERT INTO migration_approved_identities (
+  org_id, source_system, external_user_id, staff_id, affiliation_kind, review_label, evidence_notes
+) VALUES (
+  '<org>', 'legacy_expense', '<profile_uuid>', '<staff_uuid>', 'employee', 'P1 expense', 'manual review'
+);
+-- 売上側は source_system='legacy_sales' で別行（同名・別人の余地を残す）
+```
 
-### 0. 準備
+4. 招待・ロールは別手順。承認済みでも自動招待しない。
 
-Phase 1 マイグレーションを対象プロジェクトに適用しておく。
+## 取り込み
 
 ```bash
-npx supabase db push        # レビュー後に実行
-npm run db:gen-types        # 生成型を更新
-npm run db:test-rls         # 追加ケースが SKIP から実行に変わる
+# dry-run（公開ゼロ想定 until approved）
+node scripts/legacy-expense-sales-import.mjs --entity expense --org-id <org> --dry-run --source-dir tmp/legacy-import/expense
+node scripts/legacy-expense-sales-import.mjs --entity sales --org-id <org> --dry-run --source-dir tmp/legacy-import/sales
+
+# apply（承認済み対応がある人物の行だけ import）
+node scripts/legacy-expense-sales-import.mjs --entity expense --org-id <org> --apply --source-dir tmp/legacy-import/expense
+node scripts/legacy-expense-sales-import.mjs --entity sales --org-id <org> --apply --source-dir tmp/legacy-import/sales
 ```
 
-### 1. staff を先に作る
+- 配賦なし売上 8 件: quarantine + `migration_hold_reason=no_allocations`。管理者台帳で追跡、個人売上としては非公開
+- 旧 30/70 配賦 snapshot は再計算しない
+- 領収書 path は保持、コピーは別フェーズ（deferred）
 
-業務データより先に人を作る。`staff_no` は旧システムの社員番号を流用してよいが、**再利用しない**（退職者の番号を新入社員に割り当てない）。
+## 台帳の見方
 
-```
-entity_kind = 'staff'
-dry_run = true
-```
-
-まず `dry_run` で件数と重複を確認し、問題なければ適用する。
-
-### 2. 同一性を突合する
-
-`migration_identity_matches` に提案を書き込む。`match_method`:
-
-| 方法 | 信頼度 | 備考 |
-|---|---|---|
-| `existing_identity` | 最高 | 既に `staff_identities` にある |
-| `staff_no` | 高 | 社員番号が一致 |
-| `email` | 中 | 旧システムのメールが現行ログインと一致 |
-| `name` | 低 | 同姓同名に注意。必ず人が確認する |
-| `manual` | — | 人が指定 |
-
-`status = 'proposed'` のまま自動で紐づけない。人が `confirmed` にしたものだけを `staff_identities` に反映する。
-
-`staff_id` が NULL のまま残った行は、退職者・アカウント統合漏れ・別人の可能性がある。**未解決のまま業務データを取り込まない。**
-
-### 3. 業務データを取り込む
-
-確定した対応付けを使い、業務データの人物参照を `staff_id` に置き換えて取り込む。
-
-- 1 バッチ = 1 エンティティ種別（`expense` / `sales` / `weekly_pay`）
-- 失敗は `migration_errors` に記録し、バッチ単位で再実行
-- `content_hash` が同じ行はスキップ（冪等）
-
-### 4. 権限を付与する
-
-取り込みだけでは何も見えない。`staff_role_assignments` でロールを割り当てて初めて機能が現れる。
-
-```
-アルバイト（週払いのみ）  platform_base + platform_weekly_pay_submitter
-営業社員                  platform_base + platform_ai_user + platform_sales_viewer
-経理                      platform_base + platform_expense_manager
-```
-
-雇用形態からロールを自動決定しない。`employment_type` は権限の入力ではない。
-
-## 禁止事項 / Prohibited
-
-- 旧 `auth.users.id` を現行 `auth.users.id` と同一とみなす
-- `staff_id` を `auth.users.id` で上書きする破壊的マイグレーション
-- 突合未確定のまま業務データを取り込む
-- `staff_no` の再利用
-- `service_role` で通常の権限経路を迂回した取り込み（バッチ処理は独立プロセスで実行し、Next.js からは呼ばない）
-- 旧 DB の破壊・改変
-
-## ロールバック / Rollback
-
-バッチ単位で戻せるよう、取り込んだ行には `batch_id` を残す設計にする。`migration_import_batches.status = 'rolled_back'` にした上で、そのバッチが作成した行だけを削除する。
-
-`staff` と `staff_identities` は原則ロールバックしない。`staff_no` を再利用しないため、間違えた場合は `status = 'left'` にして新しい行を作る。
-
-## 検証 / Verification
-
-移行後に必ず確認する:
+- `migration_source_records` 行数は検証 batch を含む（現状数百行）
+- 一意出典: expense 13 / sales 191 → view `migration_source_record_current`
+- 試験 batch を消す場合: 出典 JSON の hash と `batch_purpose` を証明してから verification/fail_inject のみ削除。`import` で imported の実データは消さない
 
 ```bash
-npm run db:test-rls     # クロス組織分離・権限管理の拒否
-npm run e2e:release     # 既存 AI 機能のリグレッション
+node scripts/_phase81-migration-ledger.mjs --org-id <org>
 ```
 
-加えて手動で:
+## 禁止
 
-- 各雇用形態の代表ユーザーでログインし、ナビに出るモジュールが想定どおりか
-- ナビに出ないモジュールの URL を直接開いて拒否されるか
-- 旧システムの本人の記録が、本人にだけ見えるか
+- メール一致だけで `migration_approved_identities` を埋める
+- 3 PJ 共通メールの「テスト申請者」を酒匂さんへ自動結合
+- fixture への承認マップ
+- 旧 DB への書き込み

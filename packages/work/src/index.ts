@@ -34,3 +34,4 @@ export * from "./sales-lifecycle.js";
 export * from "./sales-ports.js";
 export * from "./sales-service.js";
 export * from "./sales-rpc-acl.js";
+export * from "./legacy-identity-resolve.js";
