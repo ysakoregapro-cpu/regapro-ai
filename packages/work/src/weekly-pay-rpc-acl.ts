@@ -9,10 +9,9 @@ export const WEEKLY_PAY_BUSINESS_RPC_IDENTITIES = [
   "public.return_weekly_application(uuid, text)",
   "public.approve_weekly_application(uuid)",
   "public.upsert_weekly_pay_policy(integer, integer, text, integer, boolean, integer, integer, date, date)",
-  "public.upsert_bank_account(text, text, text, text, text, text, text, uuid)",
-  "public.deactivate_bank_account(uuid)",
+  "public.upsert_bank_account_masked(text, text, text, text, text, text, text, uuid)",
+  "public.deactivate_bank_account_masked(uuid)",
   "public.upsert_worker_settings(boolean, uuid, uuid)",
-  "public.decrypt_application_bank_account_number(uuid)",
 ] as const;
 
 export const WEEKLY_PAY_RLS_HELPER_IDENTITIES = [
@@ -42,6 +41,10 @@ export const WEEKLY_PAY_INTERNAL_HELPER_IDENTITIES = [
   "public.regapro_bank_account_mutation_guard()",
   "public.regapro_worker_settings_mutation_guard()",
   "public.regapro_application_bank_snapshot_mutation_guard()",
+  "public.regapro_bank_account_to_masked(public.bank_accounts)",
+  "public.upsert_bank_account(text, text, text, text, text, text, text, uuid)",
+  "public.deactivate_bank_account(uuid)",
+  "public.decrypt_application_bank_account_number(uuid)",
 ] as const;
 
 export const WEEKLY_PAY_RPC_ACL = {

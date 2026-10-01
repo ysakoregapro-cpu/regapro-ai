@@ -370,7 +370,7 @@ export function createSupabaseWeeklyPayPorts(client: Client): WeeklyPayPorts {
         return (data ?? []).map(mapBankAccount);
       },
       async upsert(_orgId, input: UpsertBankAccountInput) {
-        const { data, error } = await client.rpc("upsert_bank_account", {
+        const { data, error } = await client.rpc("upsert_bank_account_masked", {
           p_bank_name: input.bankName,
           p_bank_code: input.bankCode,
           p_branch_name: input.branchName,
@@ -382,23 +382,15 @@ export function createSupabaseWeeklyPayPorts(client: Client): WeeklyPayPorts {
         });
         if (error) throwFromRpc(error);
         if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "bank account");
-        // RPC returns full row including ciphertext to the SECURITY DEFINER caller
-        // via PostgREST; strip sensitive keys before mapping.
-        const safe = { ...data };
-        delete safe.account_number_ciphertext;
-        delete safe.account_number;
-        return mapBankAccount(safe);
+        return mapBankAccount(data);
       },
       async deactivate(_orgId, bankAccountId) {
-        const { data, error } = await client.rpc("deactivate_bank_account", {
+        const { data, error } = await client.rpc("deactivate_bank_account_masked", {
           p_bank_account_id: bankAccountId,
         });
         if (error) throwFromRpc(error);
         if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "bank account");
-        const safe = { ...data };
-        delete safe.account_number_ciphertext;
-        delete safe.account_number;
-        return mapBankAccount(safe);
+        return mapBankAccount(data);
       },
       async getWorkerSettings(orgId, staffId) {
         const { data, error } = await client
@@ -423,16 +415,13 @@ export function createSupabaseWeeklyPayPorts(client: Client): WeeklyPayPorts {
         if (!data) throw new WeeklyPayDomainError("NOT_FOUND", "worker settings");
         return mapWorkerSettings(data);
       },
-      async decryptApplicationAccountNumber(_orgId, applicationId) {
-        const { data, error } = await client.rpc(
-          "decrypt_application_bank_account_number",
-          { p_application_id: applicationId },
+      async decryptApplicationAccountNumber(..._args: [string, string]) {
+        // Phase 5.1: EXECUTE revoked for API roles until Phase 6 CSV/audit path.
+        void _args;
+        throw new WeeklyPayDomainError(
+          "FORBIDDEN",
+          "bank account decrypt is not available until Phase 6",
         );
-        if (error) throwFromRpc(error);
-        if (typeof data !== "string" || !/^\d{7,8}$/.test(data)) {
-          throw new WeeklyPayDomainError("NOT_FOUND", "bank account number");
-        }
-        return data;
       },
     },
   };

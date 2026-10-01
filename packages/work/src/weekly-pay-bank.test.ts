@@ -53,12 +53,21 @@ describe("weekly pay bank permissions", () => {
 });
 
 describe("weekly pay bank ACL identities", () => {
-  it("lists bank business RPCs and keeps crypto helpers internal", () => {
+  it("lists masked bank business RPCs and keeps decrypt/legacy internals owner-only", () => {
     expect(WEEKLY_PAY_BUSINESS_RPC_IDENTITIES).toContain(
-      "public.upsert_bank_account(text, text, text, text, text, text, text, uuid)",
+      "public.upsert_bank_account_masked(text, text, text, text, text, text, text, uuid)",
     );
     expect(WEEKLY_PAY_BUSINESS_RPC_IDENTITIES).toContain(
+      "public.deactivate_bank_account_masked(uuid)",
+    );
+    expect(WEEKLY_PAY_BUSINESS_RPC_IDENTITIES).not.toContain(
       "public.decrypt_application_bank_account_number(uuid)",
+    );
+    expect(WEEKLY_PAY_INTERNAL_HELPER_IDENTITIES).toContain(
+      "public.decrypt_application_bank_account_number(uuid)",
+    );
+    expect(WEEKLY_PAY_INTERNAL_HELPER_IDENTITIES).toContain(
+      "public.upsert_bank_account(text, text, text, text, text, text, text, uuid)",
     );
     expect(WEEKLY_PAY_INTERNAL_HELPER_IDENTITIES).toContain(
       "public.regapro_weekly_pay_bank_dek()",

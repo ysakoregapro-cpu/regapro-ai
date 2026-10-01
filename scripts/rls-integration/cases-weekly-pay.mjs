@@ -247,7 +247,29 @@ export async function runWeeklyPayCases(reporter, fx, weekly, env) {
     );
   }
 
-  const bank = await worker.client.rpc("upsert_bank_account", {
+  const legacyUpsert = await worker.client.rpc("upsert_bank_account", {
+    p_bank_name: "テスト銀行",
+    p_bank_code: "0001",
+    p_branch_name: "本店",
+    p_branch_code: "001",
+    p_account_type: "ordinary",
+    p_account_number: weekly.bankAccountNumber,
+    p_account_holder_kana: "ヤマダ タロウ",
+    p_for_staff_id: null,
+  });
+  if (denied(legacyUpsert.error)) {
+    reporter.pass(
+      "weekly pay legacy upsert_bank_account EXECUTE denied",
+      legacyUpsert.error.message,
+    );
+  } else {
+    reporter.fail(
+      "weekly pay legacy upsert_bank_account EXECUTE denied",
+      legacyUpsert.error?.message ?? "legacy upsert succeeded",
+    );
+  }
+
+  const bank = await worker.client.rpc("upsert_bank_account_masked", {
     p_bank_name: "テスト銀行",
     p_bank_code: "0001",
     p_branch_name: "本店",
@@ -262,16 +284,18 @@ export async function runWeeklyPayCases(reporter, fx, weekly, env) {
     return;
   }
   weekly.bankIds.push(bank.data.id);
+  const upsertKeys = Object.keys(bank.data ?? {});
   if (
     bank.data.account_number_last4 === "4567" &&
-    !Object.prototype.hasOwnProperty.call(bank.data, "account_number")
+    !upsertKeys.includes("account_number") &&
+    !upsertKeys.includes("account_number_ciphertext")
   ) {
-    // PostgREST may still include ciphertext on composite returns; assert last4 only for harness.
-    reporter.pass("weekly pay bank upsert", `last4=${bank.data.account_number_last4}`);
-  } else if (bank.data.account_number_last4 === "4567") {
     reporter.pass("weekly pay bank upsert", `last4=${bank.data.account_number_last4}`);
   } else {
-    reporter.fail("weekly pay bank upsert", "unexpected last4");
+    reporter.fail(
+      "weekly pay bank upsert",
+      `unexpected keys/last4 keys=${upsertKeys.join(",")}`,
+    );
   }
 
   const plaintextProbe = await worker.client
@@ -345,7 +369,7 @@ export async function runWeeklyPayCases(reporter, fx, weekly, env) {
   weekly.originalSnapshotLast4 = snap.data?.account_number_last4;
   weekly.originalSourceBankId = snap.data?.source_bank_account_id;
 
-  const bank2 = await worker.client.rpc("upsert_bank_account", {
+  const bank2 = await worker.client.rpc("upsert_bank_account_masked", {
     p_bank_name: "テスト銀行",
     p_bank_code: "0001",
     p_branch_name: "本店",
@@ -359,7 +383,12 @@ export async function runWeeklyPayCases(reporter, fx, weekly, env) {
     reporter.fail("weekly pay bank replace", bank2.error.message);
   } else {
     weekly.bankIds.push(bank2.data.id);
-    reporter.pass("weekly pay bank replace", `last4=${bank2.data.account_number_last4}`);
+    const replaceKeys = Object.keys(bank2.data ?? {});
+    if (replaceKeys.includes("account_number_ciphertext")) {
+      reporter.fail("weekly pay bank replace", "ciphertext present in masked RPC");
+    } else {
+      reporter.pass("weekly pay bank replace", `last4=${bank2.data.account_number_last4}`);
+    }
   }
 
   const snapAfterBankChange = await worker.client
@@ -552,15 +581,53 @@ export async function runWeeklyPayCases(reporter, fx, weekly, env) {
     );
   }
 
+  // Phase 5.1: decrypt EXECUTE revoked for API roles until Phase 6.
   const payerDecrypt = await reviewer.client.rpc("decrypt_application_bank_account_number", {
     p_application_id: draft.data.id,
   });
-  if (!payerDecrypt.error && payerDecrypt.data === "9999888") {
-    reporter.pass("weekly pay payer decrypt", "ok");
+  if (denied(payerDecrypt.error)) {
+    reporter.pass(
+      "weekly pay payer decrypt EXECUTE denied until Phase 6",
+      payerDecrypt.error.message,
+    );
   } else {
     reporter.fail(
-      "weekly pay payer decrypt",
+      "weekly pay payer decrypt EXECUTE denied until Phase 6",
       payerDecrypt.error?.message ?? String(payerDecrypt.data),
+    );
+  }
+
+  const deactivate = await worker.client.rpc("deactivate_bank_account_masked", {
+    p_bank_account_id: bank2.data?.id ?? bank.data.id,
+  });
+  if (deactivate.error) {
+    reporter.fail("weekly pay bank deactivate masked", deactivate.error.message);
+  } else {
+    const deKeys = Object.keys(deactivate.data ?? {});
+    if (
+      deKeys.includes("account_number_ciphertext") ||
+      deKeys.includes("account_number")
+    ) {
+      reporter.fail("weekly pay bank deactivate masked", "sensitive keys in response");
+    } else if (deactivate.data.status === "inactive") {
+      reporter.pass("weekly pay bank deactivate masked", "inactive + masked");
+    } else {
+      reporter.fail("weekly pay bank deactivate masked", `status=${deactivate.data.status}`);
+    }
+  }
+
+  const legacyDeactivate = await worker.client.rpc("deactivate_bank_account", {
+    p_bank_account_id: bank.data.id,
+  });
+  if (denied(legacyDeactivate.error)) {
+    reporter.pass(
+      "weekly pay legacy deactivate_bank_account EXECUTE denied",
+      legacyDeactivate.error.message,
+    );
+  } else {
+    reporter.fail(
+      "weekly pay legacy deactivate_bank_account EXECUTE denied",
+      legacyDeactivate.error?.message ?? "legacy deactivate succeeded",
     );
   }
 
